@@ -1,23 +1,24 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
 import calendar
-import plotly.express as px # Pour les graphiques pro
 
-# --- DESIGN DNA-BEAT ---
-st.set_page_config(page_title="Agathe Budget - DNA-Beat", page_icon="🧬", layout="wide")
+# --- CONFIGURATION & DESIGN (Nom Agathe Budget partout) ---
+st.set_page_config(page_title="Agathe Budget | Pilotage", page_icon="💎", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: #e0e0e0; }
-    [data-testid="stMetric"] { background: rgba(0, 242, 254, 0.05); border-left: 5px solid #00f2fe; border-radius: 10px; }
-    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
-    .stTabs [data-baseweb="tab"] { background-color: rgba(255,255,255,0.05); border-radius: 10px 10px 0 0; padding: 10px 20px; }
+    .stApp { background: linear-gradient(135deg, #0f0c29, #1a1a2e, #16213e); color: #e0e0e0; }
+    [data-testid="stMetric"] { background: rgba(0, 242, 254, 0.05); border-left: 5px solid #00f2fe; border-radius: 10px; padding: 15px; }
+    .stButton>button { width: 100%; border-radius: 20px; border: 1px solid #00f2fe; background: transparent; color: #00f2fe; font-weight: bold; }
+    .stButton>button:hover { background: #00f2fe; color: #1a1a2e; box-shadow: 0 0 20px #00f2fe; }
+    h1, h2, h3 { color: #00f2fe; text-shadow: 0 0 8px rgba(0, 242, 254, 0.4); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONNEXION ---
+# --- CONNEXION CLOUD ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
@@ -34,90 +35,114 @@ def load_data():
 if 'solde_reporte' not in st.session_state: st.session_state.solde_reporte = 0.0
 if 'tresor_agathe' not in st.session_state: st.session_state.tresor_agathe = 0.0
 
-# --- SIDEBAR DYNAMIQUE ---
+# --- SIDEBAR : PILOTAGE AGATHE ---
 with st.sidebar:
-    st.title("🧬 DNA-BEAT")
+    st.title("💎 AGATHE BUDGET")
+    st.caption("Système DNA-Beat v6.3")
     mode_urgence = st.toggle("🚨 MODE VIGILANCE RAPPROCHÉE", value=False)
     
-    with st.expander("💰 REVENUS (Instituteur d'État)", expanded=False):
-        total_rev = st.number_input("Salaire + IRL + CAAF + Loyer In", value=4538)
-        h_sup = st.number_input("Heures Sup du mois", value=500)
+    with st.expander("💰 REVENUS INSTITUTEUR", expanded=False):
+        sal = st.number_input("Salaire Base", value=3500)
+        irl = st.number_input("IRL (Logement)", value=300)
+        caaf = st.number_input("CAAF", value=150)
+        loyer_in = st.number_input("Loyer Perçu", value=588)
+        h_sup = st.number_input("Heures Sup (Prévues)", value=500)
     
-    with st.expander("🏠 CHARGES FIXES", expanded=False):
-        fixes = st.number_input("Total Charges (Loyer/MGEN/Kona/Famille)", value=2328)
-        remboursement = st.number_input("Remboursement Découvert", value=600)
-        
-    with st.expander("🎯 STRATÉGIE", expanded=True):
-        courses_max = st.slider("Budget Courses", 300, 900, 600)
-        active_agathe = st.toggle("Épargne Agathe (1000€)", value=False)
+    with st.expander("🏠 CHARGES & DETTES", expanded=False):
+        fixes = st.number_input("Total Charges (Loyer/MGEN/Kona)", value=2328)
+        decouvert_mensuel = st.number_input("Remboursement Découvert", value=600)
+        objectif_decouvert = st.number_input("Cible Découvert Total (€)", value=3000)
+
+    with st.expander("🎯 STRATÉGIE ÉPARGNE", expanded=True):
+        courses_budget = st.slider("Budget Courses", 300, 900, 600)
+        active_agathe = st.toggle("Activer Trésor Agathe (1000€)", value=False)
 
 # --- CALCULS ---
 now = datetime.now()
-jours_restants = calendar.monthrange(now.year, now.month)[1] - now.day + 1
-revenu_total = total_rev + h_sup
-epargne_cible = 1000 if active_agathe else 0
-budget_total_dispo = revenu_total - fixes - remboursement - epargne_cible - (courses_max * (0.7 if mode_urgence else 1.0))
-budget_journalier = budget_total_dispo / calendar.monthrange(now.year, now.month)[1]
+jours_mois = calendar.monthrange(now.year, now.month)[1]
+rev_total = sal + irl + caaf + loyer_in + h_sup
+epargne_auto = 1000 if active_agathe else 0
+coeff_urgence = 0.7 if mode_urgence else 1.0
+
+budget_dispo_mois = rev_total - fixes - decouvert_mensuel - epargne_auto - (courses_budget * coeff_urgence)
+obj_journalier = budget_dispo_mois / jours_mois
 
 # --- INTERFACE ---
-st.title(f"🚀 DNA-Beat : Pilotage de Mars 2026") # Dynamique avec l'année actuelle
-
-tab1, tab2, tab3 = st.tabs(["📊 DASHBOARD", "📝 SAISIE", "📑 ANALYSE"])
+st.title(f"💎 Agathe Budget : {now.strftime('%B %Y')}")
 
 df_h = load_data()
+total_depense_mois = df_h["Montant"].sum()
+aujourdhui = now.strftime("%Y-%m-%d")
+depense_jour = df_h[df_h["Date"] == aujourdhui]["Montant"].sum()
+reste_reel_jour = obj_journalier + st.session_state.solde_reporte - depense_jour
 
-with tab1:
-    # Calculs temps réel
-    aujourdhui = now.strftime("%Y-%m-%d")
-    depenses_jour = df_h[df_h["Date"] == aujourdhui]["Montant"].sum()
-    reste_du_jour = budget_journalier + st.session_state.solde_reporte - depenses_jour
-    
-    c1, c2, c3 = st.columns(3)
-    c1.metric("OBJECTIF / JOUR", f"{budget_journalier:.2f} €")
-    c2.metric("RESTE POUR AUJOURD'HUI", f"{reste_du_jour:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} Reporté")
-    
-    # Projection fin de mois
-    total_depense_mois = df_h["Montant"].sum()
-    projection_fin_mois = budget_total_dispo - total_depense_mois
-    c3.metric("PROJECTION FIN DE MOIS", f"{projection_fin_mois:.2f} €", delta_color="normal")
+# --- DASHBOARD ---
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
+with c2:
+    st.metric("DISPONIBLE AUJOURD'HUI", f"{reste_reel_jour:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} Reporté")
+with c3:
+    projection = budget_dispo_mois - total_depense_mois
+    st.metric("SOLDE PRÉVISIONNEL", f"{projection:.2f} €")
 
-    st.divider()
-    
-    # Graphique de répartition
+st.markdown("---")
+
+# --- GRAPHIQUES ---
+col_left, col_right = st.columns([2, 1])
+
+with col_left:
+    st.subheader("🧬 Courbe des Dépenses")
     if not df_h.empty:
-        fig = px.pie(df_h, values='Montant', names='Type', hole=.4, 
-                     title="Répartition des dépenses",
-                     color_discrete_sequence=px.colors.sequential.Cyan)
+        fig = px.area(df_h.groupby("Date")["Montant"].sum().reset_index(), x="Date", y="Montant", color_discrete_sequence=["#00f2fe"])
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("En attente de données...")
 
-with tab2:
-    with st.form("ajout_rapide"):
-        col1, col2, col3 = st.columns([2,1,1])
-        nom = col1.text_input("Désignation", placeholder="Ex: Boulangerie, Essence...")
-        mt = col2.number_input("Montant (€)", min_value=0.0, step=0.5)
-        cat = col3.selectbox("Catégorie", ["Vie Courante", "Courses", "Loisirs", "Imprévu", "Santé"])
-        
-        if st.form_submit_button("🔨 ENREGISTRER L'OPÉRATION"):
-            if nom and mt > 0:
-                new_row = pd.DataFrame([{"Date": aujourdhui, "Nom": nom, "Montant": mt, "Type": cat, "Mode": "Urgence" if mode_urgence else "Normal"}])
-                conn.update(worksheet="Historique", data=pd.concat([df_h, new_row], ignore_index=True))
+with col_right:
+    st.subheader("🎯 Suivi Découvert")
+    progression_decouvert = min(1.0, (decouvert_mensuel / objectif_decouvert))
+    st.progress(progression_decouvert)
+    st.write(f"Remboursement : {decouvert_mensuel}€ / {objectif_decouvert}€")
+    
+    if not df_h.empty:
+        fig2 = px.pie(df_h, values='Montant', names='Type', hole=.5, color_discrete_sequence=px.colors.sequential.Cyan_r)
+        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color="white", showlegend=False)
+        st.plotly_chart(fig2, use_container_width=True)
+
+# --- ACTIONS ---
+tab_saisie, tab_histo, tab_tresor = st.tabs(["✍️ NOUVEL ACHAT", "📑 HISTORIQUE", "💎 TRÉSOR AGATHE"])
+
+with tab_saisie:
+    with st.form("form_saisie"):
+        c_a, c_b, c_c = st.columns([2,1,1])
+        n = c_a.text_input("Désignation")
+        m = c_b.number_input("Montant (€)", min_value=0.0)
+        t = c_c.selectbox("Catégorie", ["Vie Courante", "Courses", "Loisirs", "Santé", "Imprévu"])
+        if st.form_submit_button("🔨 ENREGISTRER SUR LE CLOUD"):
+            if n and m > 0:
+                new_l = pd.DataFrame([{"Date": aujourdhui, "Nom": n, "Montant": m, "Type": t, "Mode": "Urgence" if mode_urgence else "Normal"}])
+                conn.update(worksheet="Historique", data=pd.concat([df_h, new_l], ignore_index=True))
                 st.balloons()
                 st.rerun()
 
-    st.info(f"💡 Il reste {jours_restants} jours dans le mois. Tenez bon !")
-
-with tab3:
-    st.subheader("Historique Complet")
+with tab_histo:
     st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
-    
-    c_a, c_b, c_c = st.columns(3)
-    if c_a.button("🌙 Clôturer la journée"):
-        st.session_state.solde_reporte = reste_du_jour
+    cb1, cb2, cb3 = st.columns(3)
+    if cb1.button("🌙 Clôturer Journée"):
+        st.session_state.solde_reporte = reste_reel_jour
         st.rerun()
-    if c_b.button("🔄 Reset Report"):
+    if cb2.button("🔄 Reset Report"):
         st.session_state.solde_reporte = 0.0
         st.rerun()
-    if c_c.button("🗑️ Vider l'historique"):
+    if cb3.button("🗑️ Vider Historique"):
         conn.update(worksheet="Historique", data=pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"]))
+        st.rerun()
+
+with tab_tresor:
+    st.subheader("💰 Capital Sécurisé")
+    st.metric("Trésor Agathe", f"{st.session_state.tresor_agathe:.2f} €")
+    if st.button("🏁 Reset Trésor"):
+        st.session_state.tresor_agathe = 0.0
         st.rerun()
