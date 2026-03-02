@@ -4,7 +4,7 @@ from datetime import datetime
 import calendar
 
 # --- CONFIGURATION & DESIGN FUTURISTE ---
-st.set_page_config(page_title="DNA-Beat Odyssée", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Agathe Budget", page_icon="🚀", layout="wide")
 
 st.markdown("""
     <style>
@@ -45,8 +45,8 @@ if 'historique' not in st.session_state:
     st.session_state.historique = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type"])
 if 'solde_reporte' not in st.session_state:
     st.session_state.solde_reporte = 0.0
-if 'tresor_dna' not in st.session_state:
-    st.session_state.tresor_dna = 0.0
+if 'tresor_agathe' not in st.session_state:
+    st.session_state.tresor_agathe = 0.0
 
 # --- SIDEBAR : CONTRÔLE TOTAL DES VARIABLES ---
 with st.sidebar:
@@ -72,21 +72,21 @@ with st.sidebar:
     with st.expander("🎯 STRATÉGIE", expanded=True):
         remboursement = st.number_input("Remboursement Découvert (€)", value=600)
         courses_max = st.slider("Budget Courses (€)", 300, 900, 600)
-        active_dna = st.toggle("Activer DNA-Beat", value=False)
+        active_agathe = st.toggle("Activer Agathe Budget", value=False)
 
 # --- CALCULS ---
 now = datetime.now()
 jours_dans_le_mois = calendar.monthrange(now.year, now.month)[1]
 total_rev = sal + caaf + loyer_in + h_sup
 total_charges = loyer_out + assu_emp + tel_net + edf_eau + mgen + voiture + famille + divers
-epargne_dna_mensuelle = 1000 if active_dna else 0
-reste_mensuel = total_rev - total_charges - courses_max - remboursement - epargne_dna_mensuelle
+epargne_agathe_mensuelle = 1000 if active_agathe else 0
+reste_mensuel = total_rev - total_charges - courses_max - remboursement - epargne_agathe_mensuelle
 budget_jour_base = reste_mensuel / jours_dans_le_mois
 
 # --- INTERFACE PRINCIPALE ---
-st.title("🧬 DNA-Beat : Pilotage Odyssée")
+st.title("🧬 Agathe Budget : Pilotage Odyssée")
 
-tab1, tab2, tab3 = st.tabs(["⚡ DASHBOARD", "📑 HISTORIQUE", "💎 TRÉSOR DNA"])
+tab1, tab2, tab3 = st.tabs(["⚡ DASHBOARD", "📑 HISTORIQUE", "💎 TRÉSOR AGATHE"])
 
 with tab1:
     # Calcul du jour
@@ -101,8 +101,8 @@ with tab1:
     st.divider()
     if st.button("🌙 Clôturer la journée"):
         st.session_state.solde_reporte = dispo_aujourdhui
-        if active_dna: st.session_state.tresor_dna += (1000 / jours_dans_le_mois)
-        st.rerun()
+        if active_agathe: st.session_state.tresor_agathe += (1000 / jours_dans_le_mois)
+        st.run() # ou st.rerun() selon ta version
     
     if st.button("🔄 Reset Journée", help="Remet à zéro le report et les dépenses du jour"):
         st.session_state.solde_reporte = 0.0
@@ -126,11 +126,11 @@ with tab2:
         st.rerun()
 
 with tab3:
-    st.subheader("Capital DNA-Beat")
-    st.metric("Trésor Accumulé", f"{st.session_state.tresor_dna:.2f} €")
-    st.progress(min(1.0, st.session_state.tresor_dna / 10000))
+    st.subheader("Capital Agathe Budget")
+    st.metric("Trésor Accumulé", f"{st.session_state.tresor_agathe:.2f} €")
+    st.progress(min(1.0, st.session_state.tresor_agathe / 10000))
     
     st.divider()
-    if st.button("🏁 Reset Trésor", help="Remet le capital DNA-Beat à zéro"):
-        st.session_state.tresor_dna = 0.0
+    if st.button("🏁 Reset Trésor", help="Remet le capital Agathe Budget à zéro"):
+        st.session_state.tresor_agathe = 0.0
         st.rerun()
