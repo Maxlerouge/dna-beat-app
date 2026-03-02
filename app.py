@@ -77,17 +77,27 @@ with st.sidebar:
         })
         st.success("Configuration Cloud mise à jour !")
 
-# --- MOTEUR DE CALCUL (LOGIQUE SUPÉRIEURE) ---
+# --- MOTEUR DE CALCUL SÉCURISÉ ---
 now = datetime.now()
 jours_mois = calendar.monthrange(now.year, now.month)[1]
 
-# 1. Chargement et Filtre Temporel strict
 df_h = conn.read(worksheet="Historique", ttl=0)
+
 if df_h is None or df_h.empty: 
     df_h = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
+    df_mois_en_cours = df_h.copy()
 else:
-    df_h["Date"] = pd.to_datetime(df_h["Date"])
+    # FORCE la conversion en date et gère les erreurs
+    df_h["Date"] = pd.to_datetime(df_h["Date"], errors='coerce')
+    
+    # Supprime les lignes où la date n'a pas pu être convertie (évite le crash .dt)
+    df_h = df_h.dropna(subset=["Date"])
+    
     df_h["Montant"] = pd.to_numeric(df_h["Montant"], errors='coerce').fillna(0)
+
+    # Filtrage sécurisé
+    mask = (df_h["Date"].dt.month == now.month) & (df_h["Date"].dt.year == now.year)
+    df_mois_en_cours = df_h[mask].copy()
 
 # Filtrage pour le mois en cours uniquement
 df_mois_en_cours = df_h[(df_h["Date"].dt.month == now.month) & (df_h["Date"].dt.year == now.year)]
