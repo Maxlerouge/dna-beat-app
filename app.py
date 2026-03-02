@@ -3,141 +3,121 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 import calendar
+import plotly.express as px # Pour les graphiques pro
 
-# --- DESIGN FUTURISTE ---
-st.set_page_config(page_title="Agathe Budget", page_icon="🚀", layout="wide")
+# --- DESIGN DNA-BEAT ---
+st.set_page_config(page_title="Agathe Budget - DNA-Beat", page_icon="🧬", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: #e0e0e0; }
-    div[data-testid="stMetric"] { background: rgba(255, 255, 255, 0.05); border: 1px solid #00f2fe; border-radius: 15px; padding: 20px; }
-    .stButton>button { width: 100%; border-radius: 25px; border: 1px solid #00f2fe; background: transparent; color: #00f2fe; transition: 0.3s; }
-    .stButton>button:hover { background: #00f2fe; color: #000; box-shadow: 0 0 15px #00f2fe; }
-    .discipline-score { font-size: 2.5rem; text-align: center; color: #00f2fe; font-weight: bold; text-shadow: 0 0 10px #00f2fe; }
-    h1, h2, h3 { color: #00f2fe; text-shadow: 0 0 10px rgba(0, 242, 254, 0.5); }
+    [data-testid="stMetric"] { background: rgba(0, 242, 254, 0.05); border-left: 5px solid #00f2fe; border-radius: 10px; }
+    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
+    .stTabs [data-baseweb="tab"] { background-color: rgba(255,255,255,0.05); border-radius: 10px 10px 0 0; padding: 10px 20px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONNEXION SÉCURISÉE ---
+# --- CONNEXION ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
     try:
         df = conn.read(worksheet="Historique", ttl=0)
-        cols = ["Date", "Nom", "Montant", "Type", "Mode"]
         if df is None or df.empty:
-            return pd.DataFrame(columns=cols)
-        for col in cols:
-            if col not in df.columns:
-                df[col] = None
+            return pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
+        df["Montant"] = pd.to_numeric(df["Montant"], errors='coerce').fillna(0)
         return df
-    except Exception:
+    except:
         return pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
 
-# --- INITIALISATION MÉMOIRE (SESSION) ---
+# --- SESSION STATE ---
 if 'solde_reporte' not in st.session_state: st.session_state.solde_reporte = 0.0
 if 'tresor_agathe' not in st.session_state: st.session_state.tresor_agathe = 0.0
 
-# --- SIDEBAR : TOUTES TES VARIABLES ---
+# --- SIDEBAR DYNAMIQUE ---
 with st.sidebar:
-    st.title("🛸 NAVIGATION")
-    mode_urgence = st.toggle("🚨 MODE URGENCE", value=False)
+    st.title("🧬 DNA-BEAT")
+    mode_urgence = st.toggle("🚨 MODE VIGILANCE RAPPROCHÉE", value=False)
     
     with st.expander("💰 REVENUS (Instituteur d'État)", expanded=False):
-        sal = st.number_input("Salaire base (€)", value=3500)
-        irl = st.number_input("Indemnité IRL (€)", value=300)
-        caaf = st.number_input("CAAF (€)", value=150)
-        loyer_in = st.number_input("Loyer perçu (€)", value=588)
-        h_sup = st.slider("Heures Sup' (€)", 0, 1500, 500)
+        total_rev = st.number_input("Salaire + IRL + CAAF + Loyer In", value=4538)
+        h_sup = st.number_input("Heures Sup du mois", value=500)
     
     with st.expander("🏠 CHARGES FIXES", expanded=False):
-        loyer_out = st.number_input("Loyer emprunt (€)", value=850)
-        assu_emp = st.number_input("Assurance emprunt (€)", value=200)
-        tel_net = st.number_input("Tel + Internet (€)", value=90)
-        edf_eau = st.number_input("EDF + Eau (€)", value=298)
-        mgen = st.number_input("MGEN (€)", value=160)
-        voiture = st.number_input("Kona + Assu (€)", value=415)
-        famille = st.number_input("Enfants (€)", value=200)
-        divers = st.number_input("Autres (€)", value=110)
-
+        fixes = st.number_input("Total Charges (Loyer/MGEN/Kona/Famille)", value=2328)
+        remboursement = st.number_input("Remboursement Découvert", value=600)
+        
     with st.expander("🎯 STRATÉGIE", expanded=True):
-        remboursement = st.number_input("Remboursement Découvert (€)", value=600)
-        courses_max = st.slider("Budget Courses (€)", 300, 900, 600)
+        courses_max = st.slider("Budget Courses", 300, 900, 600)
         active_agathe = st.toggle("Épargne Agathe (1000€)", value=False)
 
 # --- CALCULS ---
 now = datetime.now()
-jours_dans_le_mois = calendar.monthrange(now.year, now.month)[1]
-total_rev = sal + irl + caaf + loyer_in + h_sup
-total_charges = loyer_out + assu_emp + tel_net + edf_eau + mgen + voiture + famille + divers
-epargne_agathe = 1000 if active_agathe else 0
-courses_prevues = courses_max * 0.7 if mode_urgence else courses_max
-
-reste_mensuel = total_rev - total_charges - courses_prevues - remboursement - epargne_agathe
-budget_jour_base = reste_mensuel / jours_dans_le_mois
+jours_restants = calendar.monthrange(now.year, now.month)[1] - now.day + 1
+revenu_total = total_rev + h_sup
+epargne_cible = 1000 if active_agathe else 0
+budget_total_dispo = revenu_total - fixes - remboursement - epargne_cible - (courses_max * (0.7 if mode_urgence else 1.0))
+budget_journalier = budget_total_dispo / calendar.monthrange(now.year, now.month)[1]
 
 # --- INTERFACE ---
-st.title("🧬 Agathe Budget : Forteresse")
+st.title(f"🚀 DNA-Beat : Pilotage de Mars 2026") # Dynamique avec l'année actuelle
 
-tab1, tab2, tab3 = st.tabs(["⚡ PILOTAGE", "📑 HISTORIQUE", "💎 TRÉSOR"])
+tab1, tab2, tab3 = st.tabs(["📊 DASHBOARD", "📝 SAISIE", "📑 ANALYSE"])
+
+df_h = load_data()
 
 with tab1:
-    df_h = load_data()
+    # Calculs temps réel
     aujourdhui = now.strftime("%Y-%m-%d")
+    depenses_jour = df_h[df_h["Date"] == aujourdhui]["Montant"].sum()
+    reste_du_jour = budget_journalier + st.session_state.solde_reporte - depenses_jour
     
-    try:
-        depenses_today = pd.to_numeric(df_h[df_h["Date"] == aujourdhui]["Montant"], errors='coerce').sum()
-    except:
-        depenses_today = 0.0
-        
-    dispo_aujourdhui = budget_jour_base + st.session_state.solde_reporte - depenses_today
+    c1, c2, c3 = st.columns(3)
+    c1.metric("OBJECTIF / JOUR", f"{budget_journalier:.2f} €")
+    c2.metric("RESTE POUR AUJOURD'HUI", f"{reste_du_jour:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} Reporté")
     
-    try:
-        total_depense_mois = pd.to_numeric(df_h["Montant"], errors='coerce').sum()
-        score = max(0, min(100, int(100 - (total_depense_mois / (reste_mensuel + 1) * 100))))
-    except:
-        score = 100
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("OBJECTIF JOUR", f"{budget_jour_base:.2f} €")
-    col2.metric("RESTE RÉEL", f"{dispo_aujourdhui:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} Report")
-    with col3:
-        st.markdown(f"<div class='discipline-score'>{score}%</div>", unsafe_allow_html=True)
-        st.caption("<p style='text-align:center;'>Discipline du Mois</p>", unsafe_allow_html=True)
+    # Projection fin de mois
+    total_depense_mois = df_h["Montant"].sum()
+    projection_fin_mois = budget_total_dispo - total_depense_mois
+    c3.metric("PROJECTION FIN DE MOIS", f"{projection_fin_mois:.2f} €", delta_color="normal")
 
     st.divider()
-    with st.form("saisie_achat"):
-        ca, cb = st.columns(2)
-        n = ca.text_input("Désignation")
-        m = cb.number_input("Montant (€)", min_value=0.0)
-        if st.form_submit_button("🔨 ENREGISTRER SUR CLOUD"):
-            if n and m > 0:
-                new_line = pd.DataFrame([{"Date": aujourdhui, "Nom": n, "Montant": m, "Type": "Vie", "Mode": "Urgence" if mode_urgence else "Normal"}])
-                updated_df = pd.concat([df_h, new_line], ignore_index=True)
-                conn.update(worksheet="Historique", data=updated_df)
-                st.success("Synchronisé !")
-                st.rerun()
-
-    c_btn1, c_btn2 = st.columns(2)
-    if c_btn1.button("🌙 Clôturer & Reporter"):
-        st.session_state.solde_reporte = dispo_aujourdhui
-        if active_agathe: st.session_state.tresor_agathe += (1000 / jours_dans_le_mois)
-        st.rerun()
-    if c_btn2.button("🔄 Reset Report"):
-        st.session_state.solde_reporte = 0.0
-        st.rerun()
+    
+    # Graphique de répartition
+    if not df_h.empty:
+        fig = px.pie(df_h, values='Montant', names='Type', hole=.4, 
+                     title="Répartition des dépenses",
+                     color_discrete_sequence=px.colors.sequential.Cyan)
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
+        st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    st.subheader("Archives Cloud")
-    st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
-    if st.button("🗑️ Reset Historique (Vide Google Sheet)"):
-        conn.update(worksheet="Historique", data=pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"]))
-        st.rerun()
+    with st.form("ajout_rapide"):
+        col1, col2, col3 = st.columns([2,1,1])
+        nom = col1.text_input("Désignation", placeholder="Ex: Boulangerie, Essence...")
+        mt = col2.number_input("Montant (€)", min_value=0.0, step=0.5)
+        cat = col3.selectbox("Catégorie", ["Vie Courante", "Courses", "Loisirs", "Imprévu", "Santé"])
+        
+        if st.form_submit_button("🔨 ENREGISTRER L'OPÉRATION"):
+            if nom and mt > 0:
+                new_row = pd.DataFrame([{"Date": aujourdhui, "Nom": nom, "Montant": mt, "Type": cat, "Mode": "Urgence" if mode_urgence else "Normal"}])
+                conn.update(worksheet="Historique", data=pd.concat([df_h, new_row], ignore_index=True))
+                st.balloons()
+                st.rerun()
+
+    st.info(f"💡 Il reste {jours_restants} jours dans le mois. Tenez bon !")
 
 with tab3:
-    st.subheader("Capital Agathe")
-    st.metric("Trésor Accumulé", f"{st.session_state.tresor_agathe:.2f} €")
-    st.progress(min(1.0, st.session_state.tresor_agathe / 10000))
-    if st.button("🏁 Reset Trésor"):
-        st.session_state.tresor_agathe = 0.0
+    st.subheader("Historique Complet")
+    st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
+    
+    c_a, c_b, c_c = st.columns(3)
+    if c_a.button("🌙 Clôturer la journée"):
+        st.session_state.solde_reporte = reste_du_jour
+        st.rerun()
+    if c_b.button("🔄 Reset Report"):
+        st.session_state.solde_reporte = 0.0
+        st.rerun()
+    if c_c.button("🗑️ Vider l'historique"):
+        conn.update(worksheet="Historique", data=pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"]))
         st.rerun()
