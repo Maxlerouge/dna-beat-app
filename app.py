@@ -3,120 +3,134 @@ import pandas as pd
 from datetime import datetime
 import calendar
 
-# --- CONFIGURATION & STYLE ---
-st.set_page_config(page_title="DNA-Beat V3", page_icon="🛡️", layout="wide")
+# --- CONFIGURATION & DESIGN FUTURISTE ---
+st.set_page_config(page_title="DNA-Beat Odyssée", page_icon="🚀", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp { background-color: #f0f2f6; }
-    .urgent { background-color: #ff4b4b; color: white; padding: 10px; border-radius: 10px; text-align: center; font-weight: bold; }
-    .discipline-score { font-size: 2rem; text-align: center; color: #1f77b4; font-weight: bold; }
+    /* Fond sombre et texte clair */
+    .stApp { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: #e0e0e0; }
+    
+    /* Cartes Néon */
+    div[data-testid="stMetric"] {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(0, 255, 255, 0.2);
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 4px 15px rgba(0, 255, 255, 0.1);
+    }
+    
+    /* Boutons stylisés */
+    .stButton>button {
+        width: 100%;
+        border-radius: 25px;
+        border: 1px solid #00f2fe;
+        background: transparent;
+        color: #00f2fe;
+        transition: 0.3s;
+    }
+    .stButton>button:hover {
+        background: #00f2fe;
+        color: #000;
+        box-shadow: 0 0 20px #00f2fe;
+    }
+    
+    /* Titres */
+    h1, h2, h3 { color: #00f2fe; text-shadow: 0 0 10px rgba(0, 242, 254, 0.5); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- INITIALISATION DE LA MÉMOIRE ---
+# --- MÉMOIRE INTERNE ---
 if 'historique' not in st.session_state:
-    st.session_state.historique = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Urgence"])
+    st.session_state.historique = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type"])
 if 'solde_reporte' not in st.session_state:
     st.session_state.solde_reporte = 0.0
 if 'tresor_dna' not in st.session_state:
     st.session_state.tresor_dna = 0.0
 
-# --- CALCULS CALENDRIER ---
+# --- SIDEBAR : CONTRÔLE TOTAL DES VARIABLES ---
+with st.sidebar:
+    st.title("🛸 NAVIGATION")
+    mode_urgence = st.toggle("🚨 MODE URGENCE", value=False)
+    
+    with st.expander("💰 REVENUS RÉELS", expanded=False):
+        sal = st.number_input("Salaire base (€)", value=3500)
+        caaf = st.number_input("CAAF (€)", value=150)
+        loyer_in = st.number_input("Loyer perçu (€)", value=588)
+        h_sup = st.slider("Heures Sup' (€)", 0, 1500, 500)
+    
+    with st.expander("🏠 CHARGES DÉTAILLÉES", expanded=False):
+        loyer_out = st.number_input("Loyer emprunt (€)", value=850)
+        assu_emp = st.number_input("Assurance emprunt (€)", value=200)
+        tel_net = st.number_input("Tel + Internet (€)", value=90)
+        edf_eau = st.number_input("EDF + Eau (€)", value=298)
+        mgen = st.number_input("MGEN (€)", value=160)
+        voiture = st.number_input("Kona + Assu (€)", value=415)
+        famille = st.number_input("Enfants (€)", value=200)
+        divers = st.number_input("Autres (€)", value=110)
+
+    with st.expander("🎯 STRATÉGIE", expanded=True):
+        remboursement = st.number_input("Remboursement Découvert (€)", value=600)
+        courses_max = st.slider("Budget Courses (€)", 300, 900, 600)
+        active_dna = st.toggle("Activer DNA-Beat", value=False)
+
+# --- CALCULS ---
 now = datetime.now()
 jours_dans_le_mois = calendar.monthrange(now.year, now.month)[1]
-jours_ecoules = now.day
-
-# --- SIDEBAR : PILOTAGE STRATÉGIQUE ---
-with st.sidebar:
-    st.title("🕹️ Cockpit V3")
-    mode_urgence = st.toggle("🚨 MODE URGENCE (Survie)", value=False)
-    
-    st.divider()
-    h_sup = st.number_input("Heures Sup' (€)", value=500)
-    courses_max = st.slider("Budget Courses (€)", 300, 900, 600)
-    active_dna = st.toggle("Projet DNA-Beat (1000€)", value=False)
-    
-    # Données fixes "Instituteur d'État"
-    rev_fixes = 4238 
-    charges_fixes = 2273 
-    remboursement = 600
-    
-    total_rev = rev_fixes + h_sup
-    epargne_dna_mois = 1000 if active_dna else 0
-    
-    # Impact Mode Urgence
-    if mode_urgence:
-        st.markdown("<div class='urgent'>MODE URGENCE ACTIVÉ : Loisirs bloqués</div>", unsafe_allow_html=True)
-        courses_prevues = courses_max * 0.7 # Réduction forcée de 30%
-    else:
-        courses_prevues = courses_max
-
-    reste_mensuel_vie = total_rev - charges_fixes - courses_prevues - remboursement - epargne_dna_mois
-    budget_jour_base = reste_mensuel_vie / jours_dans_le_mois
+total_rev = sal + caaf + loyer_in + h_sup
+total_charges = loyer_out + assu_emp + tel_net + edf_eau + mgen + voiture + famille + divers
+epargne_dna_mensuelle = 1000 if active_dna else 0
+reste_mensuel = total_rev - total_charges - courses_max - remboursement - epargne_dna_mensuelle
+budget_jour_base = reste_mensuel / jours_dans_le_mois
 
 # --- INTERFACE PRINCIPALE ---
-st.title("🛡️ DNA-Beat : Forteresse Budgétaire")
+st.title("🧬 DNA-Beat : Pilotage Odyssée")
 
-tab1, tab2, tab3 = st.tabs(["🎯 PILOTAGE", "📝 OPÉRATIONS", "📊 ANALYSE"])
+tab1, tab2, tab3 = st.tabs(["⚡ DASHBOARD", "📑 HISTORIQUE", "💎 TRÉSOR DNA"])
 
 with tab1:
-    # Calculs du jour
+    # Calcul du jour
     aujourdhui = now.strftime("%Y-%m-%d")
-    df_h = st.session_state.historique
-    depenses_today = df_h[df_h["Date"] == aujourdhui]["Montant"].sum()
+    depenses_today = st.session_state.historique[st.session_state.historique["Date"] == aujourdhui]["Montant"].sum()
     dispo_aujourdhui = budget_jour_base + st.session_state.solde_reporte - depenses_today
     
-    # --- SCORE DE DISCIPLINE ---
-    # Somme des dépenses réelles vs Budget théorique cumulé
-    budget_cumule_theorique = budget_jour_base * jours_ecoules
-    depenses_totale_mois = df_h["Montant"].sum()
-    score = max(0, min(100, int(100 - (depenses_totale_mois / (budget_cumule_theorique + 1) * 20))))
+    c1, c2 = st.columns(2)
+    c1.metric("OBJECTIF JOUR", f"{budget_jour_base:.2f} €")
+    c2.metric("RESTE RÉEL", f"{dispo_aujourdhui:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} (Report)")
     
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Budget Jour", f"{budget_jour_base:.2f} €")
-    with c2:
-        st.metric("Dispo Réel", f"{dispo_aujourdhui:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} (Report)")
-    with c3:
-        st.markdown(f"<div class='discipline-score'>{score}%</div>", unsafe_allow_html=True)
-        st.caption("<p style='text-align:center;'>Indice de Discipline</p>", unsafe_allow_html=True)
-
     st.divider()
-    
-    if dispo_aujourdhui < 0:
-        st.error(f"Attention ! Tu as dépassé de {abs(dispo_aujourdhui):.2f} €. Demain sera amputé.")
-    else:
-        st.success(f"Tout est vert. {dispo_aujourdhui:.2f} € seront reportés à demain.")
-
-    if st.button("🌙 Clôturer & Sauvegarder la journée"):
+    if st.button("🌙 Clôturer la journée"):
         st.session_state.solde_reporte = dispo_aujourdhui
         if active_dna: st.session_state.tresor_dna += (1000 / jours_dans_le_mois)
-        st.balloons()
+        st.rerun()
+    
+    if st.button("🔄 Reset Journée", help="Remet à zéro le report et les dépenses du jour"):
+        st.session_state.solde_reporte = 0.0
         st.rerun()
 
 with tab2:
-    with st.form("form_v3"):
-        col_n, col_m, col_t = st.columns([2,1,1])
-        nom = col_n.text_input("Désignation")
-        montant = col_m.number_input("Montant (€)", min_value=0.0)
-        type_op = col_t.selectbox("Catégorie", ["Vie", "Fixe", "Exceptionnel", "Loisir"])
-        date_op = st.date_input("Date", now)
-        
-        if mode_urgence and type_op == "Loisir":
-            st.warning("⚠️ Mode Urgence : Les loisirs sont déconseillés.")
+    st.subheader("Saisie & Historique")
+    with st.form("saisie_v4"):
+        col1, col2 = st.columns(2)
+        n = col1.text_input("Désignation")
+        m = col2.number_input("Montant (€)", min_value=0.0)
+        if st.form_submit_button("🔨 Enregistrer"):
+            new = pd.DataFrame({"Date": [aujourdhui], "Nom": [n], "Montant": [m], "Type": ["Variable"]})
+            st.session_state.historique = pd.concat([st.session_state.historique, new], ignore_index=True)
+            st.rerun()
             
-        if st.form_submit_button("🔨 Valider l'opération"):
-            if nom and montant > 0:
-                new_data = pd.DataFrame({"Date": [date_op.strftime("%Y-%m-%d")], "Nom": [nom], "Montant": [montant], "Type": [type_op], "Urgence": [mode_urgence]})
-                st.session_state.historique = pd.concat([st.session_state.historique, new_data], ignore_index=True)
-                st.rerun()
+    st.dataframe(st.session_state.historique.sort_values(by="Date", ascending=False), use_container_width=True)
+    
+    if st.button("🗑️ Reset Historique", help="Efface toutes les opérations enregistrées"):
+        st.session_state.historique = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type"])
+        st.rerun()
 
 with tab3:
-    st.subheader("Trésor DNA-Beat")
-    st.metric("Capital accumulé", f"{st.session_state.tresor_dna:.2f} €")
-    st.progress(min(1.0, st.session_state.tresor_dna / 5000))
+    st.subheader("Capital DNA-Beat")
+    st.metric("Trésor Accumulé", f"{st.session_state.tresor_dna:.2f} €")
+    st.progress(min(1.0, st.session_state.tresor_dna / 10000))
     
     st.divider()
-    st.write("### Historique complet")
-    st.dataframe(st.session_state.historique.sort_values(by="Date", ascending=False), use_container_width=True)
+    if st.button("🏁 Reset Trésor", help="Remet le capital DNA-Beat à zéro"):
+        st.session_state.tresor_dna = 0.0
+        st.rerun()
