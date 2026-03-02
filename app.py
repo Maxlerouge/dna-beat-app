@@ -33,7 +33,7 @@ def save_config(d):
 
 conf_cloud = load_config()
 
-# --- SIDEBAR ---
+# --- SIDEBAR : TOUTES TES VARIABLES ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
     
@@ -74,77 +74,94 @@ with st.sidebar:
             "active_agathe": 1 if active_agathe else 0, "mode_urgence": 1 if mode_urgence else 0,
             "last_report": st.session_state.solde_ajustement
         })
-        st.success("Config Cloud OK !")
+        st.success("Config Cloud Mémorisée !")
 
 # --- CALCULS ---
 now = datetime.now()
+jours_mois = calendar.monthrange(now.year, now.month)[1]
 rev_total = sal + caaf + loyer_in + h_sup + rev_extra
 charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam + a_vie
 epargne_agathe = 1000 if active_agathe else 0
 coeff_urg = 0.7 if mode_urgence else 1.0
 budget_mois = rev_total - charges_total - remboursement - epargne_agathe - (budget_bouffe * coeff_urg)
-obj_journalier = budget_mois / calendar.monthrange(now.year, now.month)[1]
+obj_journalier = budget_mois / jours_mois
 
 # --- DASHBOARD ---
-st.title(f"💎 Dashboard Agathe : {now.strftime('%B %Y')}")
+st.title(f"💎 Agathe Budget : {now.strftime('%B %Y')}")
 
-# LA JAUGE DU DÉCOUVERT (AJOUTÉE ICI)
-st.subheader("🎯 État du Remboursement Découvert")
+# JAUGE DÉCOUVERT
+st.subheader("🎯 Suivi du Découvert")
 progression = min(1.0, remboursement / obj_decouvert)
 st.progress(progression)
-st.caption(f"Progression : {remboursement} € remboursés sur un objectif de {obj_decouvert} € ({int(progression*100)}%)")
+st.caption(f"Objectif : {obj_decouvert}€ | Remboursé ce mois : {remboursement}€ ({int(progression*100)}%)")
 
 st.divider()
 
 # MÉTRIQUES
 df_h = conn.read(worksheet="Historique", ttl=0)
 if df_h is None or df_h.empty: df_h = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
-total_dep = pd.to_numeric(df_h["Montant"]).sum()
-reste_jour = obj_journalier + st.session_state.solde_ajustement - df_h[df_h["Date"] == now.strftime("%Y-%m-%d")]["Montant"].sum()
+df_h["Montant"] = pd.to_numeric(df_h["Montant"], errors='coerce').fillna(0)
 
-c1, c2, c3 = st.columns(3)
-c1.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
-c2.metric("DISPO RÉEL JOUR", f"{reste_jour:.2f} €")
-c3.metric("RESTANT FIN MOIS", f"{(budget_mois + st.session_state.solde_ajustement) - total_dep:.2f} €")
+total_dep_mois = df_h["Montant"].sum()
+dep_jour = df_h[df_h["Date"] == now.strftime("%Y-%m-%d")]["Montant"].sum()
+reste_reel_jour = obj_journalier + st.session_state.solde_ajustement - dep_jour
 
-# --- VISUALISATION ---
-col1, col2 = st.columns([2, 1])
-with col1:
-    st.subheader("🧬 Évolution Dépenses")
+col_m1, col_m2, col_m3 = st.columns(3)
+col_m1.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
+col_m2.metric("DISPONIBLE DU JOUR", f"{reste_reel_jour:.2f} €", delta=f"{st.session_state.solde_ajustement:.2f} Reporté")
+col_m3.metric("SOLDE FIN MOIS", f"{(budget_mois + st.session_state.solde_ajustement) - total_dep_mois:.2f} €")
+
+st.divider()
+
+# --- GRAPHIQUES (RÉINTÉGRÉS) ---
+col_g1, col_g2 = st.columns([2, 1])
+
+with col_g1:
+    st.subheader("🧬 Évolution des Dépenses")
     if not df_h.empty:
-        fig = px.area(df_h.groupby("Date")["Montant"].sum().reset_index(), x="Date", y="Montant", color_discrete_sequence=["#00f2fe"])
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
+        df_daily = df_h.groupby("Date")["Montant"].sum().reset_index()
+        fig = px.area(df_daily, x="Date", y="Montant", color_discrete_sequence=["#00f2fe"])
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white", 
+                          xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
         st.plotly_chart(fig, use_container_width=True)
-with col2:
-    st.subheader("📊 Répartition")
+    else:
+        st.info("Aucune donnée pour le graphique d'évolution.")
+
+with col_g2:
+    st.subheader("📊 Répartition par Type")
     if not df_h.empty:
-        fig2 = px.pie(df_h, values='Montant', names='Type', hole=.5, color_discrete_sequence=px.colors.sequential.Teal)
+        fig2 = px.pie(df_h, values='Montant', names='Type', hole=.6, 
+                      color_discrete_sequence=px.colors.sequential.Teal_r)
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color="white", showlegend=False)
         st.plotly_chart(fig2, use_container_width=True)
 
-# --- TABS ---
-t1, t2, t3 = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ GESTION"])
-with t1:
-    with st.form("a"):
-        ca, cb, cc = st.columns([2,1,1])
-        n = ca.text_input("Désignation")
-        m = cb.number_input("Montant", min_value=0.0)
-        cat = cc.selectbox("Type", ["Courses", "Vie Courante", "Loisirs", "Santé", "Imprévu"])
-        if st.form_submit_button("🔨 VALIDER"):
-            new = pd.DataFrame([{"Date": now.strftime("%Y-%m-%d"), "Nom": n, "Montant": m, "Type": cat, "Mode": "Normal"}])
-            conn.update(worksheet="Historique", data=pd.concat([df_h, new], ignore_index=True))
-            st.rerun()
+st.divider()
 
-with t2:
+# --- ACTIONS & HISTORIQUE ---
+tab1, tab2, tab3 = st.tabs(["✍️ NOUVEL ACHAT", "📑 HISTORIQUE COMPLET", "⚙️ ARCHIVES"])
+
+with tab1:
+    with st.form("ajout_achat"):
+        c_a, c_b, c_c = st.columns([2,1,1])
+        nom = c_a.text_input("Désignation")
+        montant = c_b.number_input("Montant (€)", min_value=0.0, step=0.01)
+        categorie = c_c.selectbox("Catégorie", ["Courses", "Vie Courante", "Loisirs", "Santé", "Imprévu"])
+        if st.form_submit_button("🔨 ENREGISTRER"):
+            if nom and montant > 0:
+                new_line = pd.DataFrame([{"Date": now.strftime("%Y-%m-%d"), "Nom": nom, "Montant": montant, "Type": categorie, "Mode": "Normal"}])
+                conn.update(worksheet="Historique", data=pd.concat([df_h, new_line], ignore_index=True))
+                st.rerun()
+
+with tab2:
     st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
-    if st.button("🌙 Clôturer Journée"):
-        st.session_state.solde_ajustement = reste_jour
+    if st.button("🌙 Clôturer la Journée & Reporter le surplus"):
+        st.session_state.solde_ajustement = reste_reel_jour
         st.rerun()
 
-with t3:
-    if st.button("SAUVEGARDER DANS ARCHIVES"):
+with tab3:
+    if st.button("📦 ARCHIVER LE MOIS"):
         try:
             df_arch = conn.read(worksheet="Archives", ttl=0)
             conn.update(worksheet="Archives", data=pd.concat([df_arch, df_h], ignore_index=True))
-            st.success("Archivé")
-        except: st.error("Onglet 'Archives' absent")
+            st.success("Données envoyées vers l'onglet Archives.")
+        except: st.error("L'onglet 'Archives' est introuvable.")
