@@ -5,15 +5,16 @@ from datetime import datetime
 # Configuration de l'interface
 st.set_page_config(page_title="DNA-Beat Dashboard", page_icon="🧬", layout="wide")
 
-# --- DESIGN CUSTOM ---
+# --- DESIGN CUSTOM (Version compatible) ---
 st.markdown("""
     <style>
-    .main { background-color: #f5f7f9; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .stApp { background-color: #f8f9fa; }
+    div[data-testid="stMetricValue"] { font-size: 1.8rem; color: #1f77b4; }
+    .stButton>button { width: 100%; border-radius: 20px; height: 3em; background-color: #007bff; color: white; }
     </style>
-    """, unsafe_url_path=True)
+    """, unsafe_allow_html=True)
 
-# --- INITIALISATION DE LA MÉMOIRE (SESSION STATE) ---
+# --- INITIALISATION DE LA MÉMOIRE ---
 if 'solde_reporte' not in st.session_state:
     st.session_state.solde_reporte = 0.0
 if 'depenses_jour' not in st.session_state:
@@ -21,7 +22,7 @@ if 'depenses_jour' not in st.session_state:
 if 'tresor_dna' not in st.session_state:
     st.session_state.tresor_dna = 0.0
 
-st.title("🧬 DNA-Beat : Pilotage Intelligent")
+st.title("🧬 DNA-Beat Pilotage")
 
 # --- SIDEBAR : CONTRÔLE TOTAL ---
 with st.sidebar:
@@ -31,7 +32,7 @@ with st.sidebar:
     loyer_in = st.number_input("Loyer perçu (€)", value=588)
     h_sup = st.slider("Heures Sup' (€)", 0, 1500, 500)
     
-    st.header("🏠 TOUTES LES CHARGES")
+    st.header("🏠 CHARGES FIXES")
     loyer_out = st.number_input("Loyer emprunt (€)", value=850)
     assu_emp = st.number_input("Assurance emprunt (€)", value=200)
     tel_net = st.number_input("Tel + Internet (€)", value=90)
@@ -39,85 +40,50 @@ with st.sidebar:
     mgen = st.number_input("MGEN (€)", value=160)
     voiture = st.number_input("Kona + Assurance (€)", value=415)
     famille = st.number_input("Enfants / Cantine (€)", value=200)
-    divers = st.number_input("Autres (Drive/Vie/Assu) (€)", value=110)
+    divers = st.number_input("Autres (Drive/Vie) (€)", value=110)
     
     st.header("🎯 STRATÉGIE")
-    decouvert_init = st.number_input("Découvert début mois (€)", value=-2000)
-    remboursement_mensuel = st.number_input("Remboursement fixé (€)", value=600)
+    decouvert_init = st.number_input("Découvert début (€)", value=-2000)
+    remboursement_mensuel = st.number_input("Remboursement (€)", value=600)
     courses = st.slider("Budget Courses (€)", 300, 900, 600)
     active_dna = st.toggle("Épargne DNA-Beat (1000€)", value=False)
 
-# --- CALCULS DE BASE ---
+# --- CALCULS ---
 total_revenus = sal + caaf + loyer_in + h_sup
 total_charges = loyer_out + assu_emp + tel_net + edf_eau + mgen + voiture + famille + divers
 epargne_mois = 1000 if active_dna else 0
 
 reste_mensuel_vie = total_revenus - total_charges - courses - remboursement_mensuel - epargne_mois
-budget_jour_theorique = reste_mensuel_vie / 30
+budget_jour_base = reste_mensuel_vie / 30
 
-# --- INTERFACE PRINCIPALE ---
-tab1, tab2, tab3 = st.tabs(["🚀 AUJOURD'HUI", "💸 SAISIE DÉPENSE", "📈 BILAN & TRÉSOR"])
+# --- INTERFACE ---
+tab1, tab2, tab3 = st.tabs(["📱 AUJOURD'HUI", "💸 SAISIE", "📈 BILAN"])
 
 with tab1:
-    st.subheader("État de ton budget quotidien")
-    
-    # Calcul du Reste Réel avec report
     depenses_actuelles = sum(d['Montant'] for d in st.session_state.depenses_jour)
-    budget_du_jour_avec_report = budget_jour_theorique + st.session_state.solde_reporte
-    reste_final = budget_du_jour_avec_report - depenses_actuelles
+    dispo_aujourdhui = budget_jour_base + st.session_state.solde_reporte - depenses_actuelles
     
-    # Affichage visuel
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Base Jour", f"{budget_jour_theorique:.2f} €")
+    col1, col2 = st.columns(2)
+    col1.metric("Objectif Jour", f"{budget_jour_base:.2f} €")
+    col2.metric("Report Veille", f"{st.session_state.solde_reporte:.2f} €")
     
-    # Report de la veille (couleur bleue si positif, orange si négatif)
-    c2.metric("Report de la veille", f"{st.session_state.solde_reporte:.2f} €")
-    
-    # LE RESTE RÉEL (Rouge si négatif)
-    if reste_final < 0:
-        st.error(f"⚠️ ATTENTION : Tu es à {reste_final:.2f} €")
+    st.write("---")
+    if dispo_aujourdhui < 0:
+        st.markdown(f"<h1 style='text-align: center; color: #d9534f;'>{dispo_aujourdhui:.2f} €</h1>", unsafe_allow_html=True)
+        st.error("Budget dépassé ! Le surplus sera déduit de demain.")
     else:
-        st.success(f"✅ DISPONIBLE : {reste_final:.2f} €")
-    
-    st.divider()
-    
-    # Bouton Fin de Journée (C'est ici que la magie du report opère)
+        st.markdown(f"<h1 style='text-align: center; color: #5cb85c;'>{dispo_aujourdhui:.2f} €</h1>", unsafe_allow_html=True)
+        st.success("Tu es dans les clous ! L'économie sera ajoutée à demain.")
+
     if st.button("🌙 Clôturer la journée"):
-        st.session_state.solde_reporte = reste_final # Le reste devient le report de demain
+        st.session_state.solde_reporte = dispo_aujourdhui
         st.session_state.depenses_jour = []
         if active_dna:
-            st.session_state.tresor_dna += (1000/30) # On simule l'accumulation quotidienne
+            st.session_state.tresor_dna += (1000/30)
         st.rerun()
 
 with tab2:
-    st.subheader("Ajouter un achat")
     with st.form("depense"):
-        nom = st.text_input("Nom de la dépense")
+        nom = st.text_input("Nom de l'achat")
         montant = st.number_input("Montant (€)", min_value=0.0)
-        if st.form_submit_button("Enregistrer"):
-            if nom and montant > 0:
-                st.session_state.depenses_jour.append({"Nom": nom, "Montant": montant, "Heure": datetime.now().strftime("%H:%M")})
-                st.rerun()
-    
-    if st.session_state.depenses_jour:
-        st.write("Dépenses du jour :")
-        st.table(pd.DataFrame(st.session_state.depenses_jour))
-
-with tab3:
-    st.subheader("Bilan du Projet DNA-Beat")
-    
-    # Jauge de remboursement découvert
-    nouveau_decouvert = decouvert_init + remboursement_mensuel
-    st.write(f"📉 **Découvert estimé fin de mois : {nouveau_decouvert:.2f} €**")
-    st.progress(min(1.0, max(0.0, (2000 + nouveau_decouvert) / 2000)))
-    
-    st.divider()
-    
-    # JAUGE DE TRÉSOR DNA-BEAT
-    st.subheader("💎 Trésor Cumulé DNA-Beat")
-    st.write(f"Ton capital pour le projet : **{st.session_state.tresor_dna:.2f} €**")
-    st.progress(min(1.0, st.session_state.tresor_dna / 10000)) # Jauge sur un objectif de 10k€
-    
-    if st.button("Reset Mensuel (Nouveau Salaire)"):
-        st.session_state.solde_reporte = 0.0
-        st.rerun()
+        if st.form_submit_button("Aj
