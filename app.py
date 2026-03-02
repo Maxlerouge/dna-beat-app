@@ -31,23 +31,23 @@ def load_data(sheet_name="Historique"):
     except:
         return pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
 
-# --- SESSION STATE (MÉMOIRE) ---
+# --- SESSION STATE ---
 if 'solde_ajustement' not in st.session_state: st.session_state.solde_ajustement = 0.0
 
-# --- SIDEBAR : CONFIGURATION DYNAMIQUE ---
+# --- SIDEBAR : PILOTAGE AGATHE ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    st.caption("DNA-Beat v6.7 | 2026")
+    st.caption("DNA-Beat v6.9 | Objectif 30€/J")
     
     with st.expander("💰 REVENUS", expanded=False):
         sal = st.number_input("Salaire Base (€)", value=3500)
         caaf = st.number_input("CAAF (€)", value=150)
         loyer_in = st.number_input("Loyer Perçu (€)", value=588)
         h_sup = st.number_input("Heures Sup (€)", value=500)
-        rev_extra = st.number_input("Revenu Supplémentaire (€)", value=0.0) # NOUVEAU
+        rev_extra = st.number_input("Revenu Supplémentaire (€)", value=0.0)
     
     with st.expander("⚙️ RÉGLAGE SOLDE DÉPART", expanded=True):
-        st.session_state.solde_ajustement = st.number_input("Ajustement Solde (€)", value=st.session_state.solde_ajustement, help="Pour caler l'app sur votre banque en début de mois")
+        st.session_state.solde_ajustement = st.number_input("Ajustement Solde (€)", value=st.session_state.solde_ajustement)
 
     with st.expander("🏠 CHARGES FIXES", expanded=False):
         l_out = st.number_input("Loyer / Emprunt (€)", value=850)
@@ -57,11 +57,11 @@ with st.sidebar:
         mgen = st.number_input("MGEN (€)", value=160)
         kona = st.number_input("Kona + Assurance (€)", value=415)
         fam = st.number_input("Famille / Enfants (€)", value=200)
-        div = st.number_input("Divers / Autres (€)", value=110)
         
     with st.expander("📉 DÉCOUVERT & ÉPARGNE", expanded=True):
-        decouvert_mensuel = st.number_input("Remboursement Découvert (€)", value=600)
-        obj_decouvert = st.number_input("Objectif Total (€)", value=2000)
+        # MISE À JOUR : Valeur réglée à 995 € comme demandé
+        decouvert_mensuel = st.number_input("Remboursement ce mois (€)", value=995)
+        obj_decouvert_total = st.number_input("Découvert total à combler (€)", value=2000)
         active_agathe = st.toggle("Activer Trésor Agathe (1000€)", value=False)
         mode_urgence = st.toggle("🚨 MODE VIGILANCE", value=False)
 
@@ -69,23 +69,22 @@ with st.sidebar:
 now = datetime.now()
 jours_mois = calendar.monthrange(now.year, now.month)[1]
 rev_total = sal + caaf + loyer_in + h_sup + rev_extra
-charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam + div
+charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam
 epargne_auto = 1000 if active_agathe else 0
 coeff_urg = 0.7 if mode_urgence else 1.0
 
-# Budget journalier avec prise en compte de l'ajustement
-budget_dispo_mois = rev_total - charges_total - decouvert_mensuel - epargne_auto - (600 * coeff_urg)
+# Budget journalier recalibré
+# On retire les charges, le remboursement et l'épargne. Le budget courses est inclus dans le reste à vivre.
+budget_dispo_mois = rev_total - charges_total - decouvert_mensuel - epargne_auto
 obj_journalier = budget_dispo_mois / jours_mois
 
-# --- INTERFACE ---
+# --- DASHBOARD ---
 st.title(f"💎 Agathe Budget : {now.strftime('%B %Y')}")
 
 df_h = load_data()
 total_depense_mois = df_h["Montant"].sum()
 aujourdhui = now.strftime("%Y-%m-%d")
 depense_jour = df_h[df_h["Date"] == aujourdhui]["Montant"].sum()
-
-# Calcul final du disponible incluant l'ajustement manuel
 reste_reel_jour = obj_journalier + st.session_state.solde_ajustement - depense_jour
 
 c1, c2, c3 = st.columns(3)
@@ -95,8 +94,8 @@ c3.metric("PROJECTION FIN MOIS", f"{(budget_dispo_mois + st.session_state.solde_
 
 st.divider()
 
-# --- ACTIONS ---
-tab_saisie, tab_histo, tab_admin = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ SAUVEGARDE & ADMIN"])
+# --- TABS ---
+tab_saisie, tab_histo, tab_admin = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ ARCHIVES"])
 
 with tab_saisie:
     with st.form("form_saisie"):
@@ -113,25 +112,24 @@ with tab_saisie:
 
 with tab_histo:
     st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
-    if st.button("🌙 Clôturer Journée (Reporter le solde vers Ajustement)"):
+    if st.button("🌙 Clôturer Journée (Report vers Ajustement)"):
         st.session_state.solde_ajustement = reste_reel_jour
         st.rerun()
 
 with tab_admin:
-    st.subheader("🛡️ Sécurité & Archives")
-    col_a, col_b = st.columns(2)
+    st.subheader("🛡️ Gestion des Archives")
+    st.info("Rappel : Créez l'onglet 'Archives' dans votre Google Sheet pour activer cette fonction.")
     
-    if col_a.button("📦 SAUVEGARDER VERS ARCHIVES"):
+    if st.button("📦 LANCER LA SAUVEGARDE VERS ARCHIVES"):
         try:
-            # On charge les archives existantes et on ajoute l'actuel
             df_arch = load_data("Archives")
             df_final_arch = pd.concat([df_arch, df_h], ignore_index=True)
             conn.update(worksheet="Archives", data=df_final_arch)
-            st.success("Données copiées vers l'onglet 'Archives' !")
+            st.success("Synchronisation réussie !")
         except:
-            st.error("L'onglet 'Archives' n'existe pas dans votre Google Sheet !")
+            st.error("Onglet 'Archives' introuvable dans le Google Sheet.")
 
-    if col_b.button("🗑️ VIDER L'HISTORIQUE ACTUEL"):
+    if st.button("🗑️ REMISE À ZÉRO DU MOIS"):
         conn.update(worksheet="Historique", data=pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"]))
         st.session_state.solde_ajustement = 0.0
         st.rerun()
