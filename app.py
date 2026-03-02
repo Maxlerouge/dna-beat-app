@@ -1,65 +1,56 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 import calendar
 
-# --- CONFIGURATION & DESIGN FUTURISTE ---
+# --- CONFIGURATION & DESIGN ---
 st.set_page_config(page_title="Agathe Budget", page_icon="🚀", layout="wide")
 
 st.markdown("""
     <style>
-    /* Fond sombre et texte clair */
     .stApp { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: #e0e0e0; }
-    
-    /* Cartes Néon */
     div[data-testid="stMetric"] {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(0, 255, 255, 0.2);
         border-radius: 15px;
         padding: 20px;
-        box-shadow: 0 4px 15px rgba(0, 255, 255, 0.1);
     }
-    
-    /* Boutons stylisés */
     .stButton>button {
-        width: 100%;
-        border-radius: 25px;
-        border: 1px solid #00f2fe;
-        background: transparent;
-        color: #00f2fe;
-        transition: 0.3s;
+        width: 100%; border-radius: 25px; border: 1px solid #00f2fe;
+        background: transparent; color: #00f2fe;
     }
-    .stButton>button:hover {
-        background: #00f2fe;
-        color: #000;
-        box-shadow: 0 0 20px #00f2fe;
-    }
-    
-    /* Titres */
     h1, h2, h3 { color: #00f2fe; text-shadow: 0 0 10px rgba(0, 242, 254, 0.5); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- MÉMOIRE INTERNE ---
-if 'historique' not in st.session_state:
-    st.session_state.historique = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type"])
+# --- CONNEXION GOOGLE SHEETS ---
+# Note : Tu dois configurer l'URL dans les secrets de Streamlit (st.secrets["connections"]["gsheets"]["url"])
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def get_data():
+    try:
+        return conn.read(worksheet="Historique", ttl=0)
+    except:
+        return pd.DataFrame(columns=["Date", "Nom", "Montant", "Type"])
+
+# --- INITIALISATION ÉTAT (SESSION) ---
 if 'solde_reporte' not in st.session_state:
     st.session_state.solde_reporte = 0.0
 if 'tresor_agathe' not in st.session_state:
     st.session_state.tresor_agathe = 0.0
 
-# --- SIDEBAR : CONTRÔLE TOTAL DES VARIABLES ---
+# --- SIDEBAR : VARIABLES MODIFIABLES ---
 with st.sidebar:
     st.title("🛸 NAVIGATION")
-    mode_urgence = st.toggle("🚨 MODE URGENCE", value=False)
     
-    with st.expander("💰 REVENUS RÉELS", expanded=False):
+    with st.expander("💰 REVENUS", expanded=False):
         sal = st.number_input("Salaire base (€)", value=3500)
         caaf = st.number_input("CAAF (€)", value=150)
         loyer_in = st.number_input("Loyer perçu (€)", value=588)
         h_sup = st.slider("Heures Sup' (€)", 0, 1500, 500)
     
-    with st.expander("🏠 CHARGES DÉTAILLÉES", expanded=False):
+    with st.expander("🏠 CHARGES", expanded=False):
         loyer_out = st.number_input("Loyer emprunt (€)", value=850)
         assu_emp = st.number_input("Assurance emprunt (€)", value=200)
         tel_net = st.number_input("Tel + Internet (€)", value=90)
@@ -79,50 +70,54 @@ now = datetime.now()
 jours_dans_le_mois = calendar.monthrange(now.year, now.month)[1]
 total_rev = sal + caaf + loyer_in + h_sup
 total_charges = loyer_out + assu_emp + tel_net + edf_eau + mgen + voiture + famille + divers
-epargne_agathe_mensuelle = 1000 if active_agathe else 0
-reste_mensuel = total_rev - total_charges - courses_max - remboursement - epargne_agathe_mensuelle
+epargne_mensuelle = 1000 if active_agathe else 0
+reste_mensuel = total_rev - total_charges - courses_max - remboursement - epargne_mensuelle
 budget_jour_base = reste_mensuel / jours_dans_le_mois
 
-# --- INTERFACE PRINCIPALE ---
+# --- INTERFACE ---
 st.title("🧬 Agathe Budget : Pilotage Odyssée")
 
-tab1, tab2, tab3 = st.tabs(["⚡ DASHBOARD", "📑 HISTORIQUE", "💎 TRÉSOR AGATHE"])
+tab1, tab2, tab3 = st.tabs(["⚡ DASHBOARD", "📑 HISTORIQUE", "💎 TRÉSOR"])
 
 with tab1:
-    # Calcul du jour
+    df_historique = get_data()
     aujourdhui = now.strftime("%Y-%m-%d")
-    depenses_today = st.session_state.historique[st.session_state.historique["Date"] == aujourdhui]["Montant"].sum()
+    depenses_today = df_historique[df_historique["Date"] == aujourdhui]["Montant"].sum()
     dispo_aujourdhui = budget_jour_base + st.session_state.solde_reporte - depenses_today
     
-    c1, c2 = st.columns(2)
-    c1.metric("OBJECTIF JOUR", f"{budget_jour_base:.2f} €")
-    c2.metric("RESTE RÉEL", f"{dispo_aujourdhui:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} (Report)")
+    col1, col2 = st.columns(2)
+    col1.metric("OBJECTIF JOUR", f"{budget_jour_base:.2f} €")
+    col2.metric("RESTE RÉEL", f"{dispo_aujourdhui:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} Report")
     
     st.divider()
     if st.button("🌙 Clôturer la journée"):
         st.session_state.solde_reporte = dispo_aujourdhui
         if active_agathe: st.session_state.tresor_agathe += (1000 / jours_dans_le_mois)
-        st.run() # ou st.rerun() selon ta version
+        st.success("Journée clôturée !")
     
-    if st.button("🔄 Reset Journée", help="Remet à zéro le report et les dépenses du jour"):
+    if st.button("🔄 Reset Report Journée"):
         st.session_state.solde_reporte = 0.0
         st.rerun()
 
 with tab2:
-    st.subheader("Saisie & Historique")
-    with st.form("saisie_v4"):
-        col1, col2 = st.columns(2)
-        n = col1.text_input("Désignation")
-        m = col2.number_input("Montant (€)", min_value=0.0)
-        if st.form_submit_button("🔨 Enregistrer"):
-            new = pd.DataFrame({"Date": [aujourdhui], "Nom": [n], "Montant": [m], "Type": ["Variable"]})
-            st.session_state.historique = pd.concat([st.session_state.historique, new], ignore_index=True)
-            st.rerun()
+    st.subheader("Saisie d'achat")
+    with st.form("form_saisie"):
+        n = st.text_input("Désignation")
+        m = st.number_input("Montant (€)", min_value=0.0)
+        t = st.selectbox("Catégorie", ["Vie", "Fixe", "Loisir"])
+        if st.form_submit_button("🔨 Envoyer vers Google Sheets"):
+            if n and m > 0:
+                new_entry = pd.DataFrame([{"Date": aujourdhui, "Nom": n, "Montant": m, "Type": t}])
+                updated_df = pd.concat([df_historique, new_entry], ignore_index=True)
+                conn.update(worksheet="Historique", data=updated_df)
+                st.success("Données sauvegardées à vie !")
+                st.rerun()
             
-    st.dataframe(st.session_state.historique.sort_values(by="Date", ascending=False), use_container_width=True)
+    st.dataframe(df_historique.sort_values(by="Date", ascending=False), use_container_width=True)
     
-    if st.button("🗑️ Reset Historique", help="Efface toutes les opérations enregistrées"):
-        st.session_state.historique = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type"])
+    if st.button("🗑️ Reset Historique (Attention : Efface Google Sheets)"):
+        empty_df = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type"])
+        conn.update(worksheet="Historique", data=empty_df)
         st.rerun()
 
 with tab3:
@@ -130,7 +125,6 @@ with tab3:
     st.metric("Trésor Accumulé", f"{st.session_state.tresor_agathe:.2f} €")
     st.progress(min(1.0, st.session_state.tresor_agathe / 10000))
     
-    st.divider()
-    if st.button("🏁 Reset Trésor", help="Remet le capital Agathe Budget à zéro"):
+    if st.button("🏁 Reset Trésor"):
         st.session_state.tresor_agathe = 0.0
         st.rerun()
