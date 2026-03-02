@@ -14,19 +14,18 @@ st.markdown("""
     [data-testid="stMetric"] { background: rgba(0, 242, 254, 0.05); border-left: 5px solid #00f2fe; border-radius: 10px; padding: 15px; }
     .stButton>button { width: 100%; border-radius: 20px; border: 1px solid #00f2fe; background: transparent; color: #00f2fe; font-weight: bold; }
     h1, h2, h3 { color: #00f2fe; text-shadow: 0 0 8px rgba(0, 242, 254, 0.4); }
+    .stProgress > div > div > div > div { background-color: #00f2fe; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONNEXION ---
+# --- CONNEXION & MÉMOIRE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- SYSTÈME DE MÉMOIRE CLOUD ---
 def load_config():
     try:
         df_conf = conn.read(worksheet="Config", ttl=0)
         return dict(zip(df_conf['Variable'], df_conf['Valeur']))
-    except:
-        return {}
+    except: return {}
 
 def save_config(d):
     df_save = pd.DataFrame(list(d.items()), columns=['Variable', 'Valeur'])
@@ -34,10 +33,9 @@ def save_config(d):
 
 conf_cloud = load_config()
 
-# --- SIDEBAR : VÉRIFICATION DE TOUTES LES VARIABLES ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    st.caption("DNA-Beat v7.8 | 2026")
     
     with st.expander("💰 REVENUS", expanded=False):
         sal = st.number_input("Salaire Base", value=float(conf_cloud.get("sal", 3500.0)))
@@ -46,7 +44,6 @@ with st.sidebar:
         h_sup = st.number_input("Heures Sup", value=float(conf_cloud.get("h_sup", 500.0)))
         rev_extra = st.number_input("Revenu Extra", value=float(conf_cloud.get("rev_extra", 0.0)))
     
-    # Report de solde (Mémoire Session)
     if 'solde_ajustement' not in st.session_state:
         st.session_state.solde_ajustement = float(conf_cloud.get("last_report", 0.0))
     st.session_state.solde_ajustement = st.number_input("Ajustement / Report (€)", value=st.session_state.solde_ajustement)
@@ -58,88 +55,96 @@ with st.sidebar:
         e_eau = st.number_input("EDF + Eau", value=float(conf_cloud.get("e_eau", 298.0)))
         mgen = st.number_input("MGEN", value=float(conf_cloud.get("mgen", 160.0)))
         kona = st.number_input("Kona + Assurance", value=float(conf_cloud.get("kona", 415.0)))
-        fam = st.number_input("Famille / Enfants", value=float(conf_cloud.get("fam", 200.0)))
+        fam = st.number_input("Famille", value=float(conf_cloud.get("fam", 200.0)))
         a_vie = st.number_input("Assurance Vie", value=float(conf_cloud.get("a_vie", 50.0)))
-        # La variable "Divers" est officiellement absente.
 
     with st.expander("📉 DÉCOUVERT & STRATÉGIE", expanded=True):
         remboursement = st.number_input("Remboursement ce mois", value=float(conf_cloud.get("remboursement", 600.0)))
         obj_decouvert = st.number_input("Découvert Total Cible", value=float(conf_cloud.get("obj_decouvert", 2000.0)))
-        budget_bouffe = st.slider("Budget Courses / Bouffe (€)", 300, 1000, int(conf_cloud.get("budget_bouffe", 600)))
+        budget_bouffe = st.slider("Budget Courses (€)", 300, 1000, int(conf_cloud.get("budget_bouffe", 600)))
         active_agathe = st.toggle("Activer Trésor Agathe (1000€)", value=conf_cloud.get("active_agathe", 0) == 1)
         mode_urgence = st.toggle("🚨 MODE VIGILANCE", value=conf_cloud.get("mode_urgence", 0) == 1)
 
-    if st.button("💾 SAUVEGARDER TOUTE LA CONFIGURATION"):
-        config_a_sauver = {
+    if st.button("💾 SAUVEGARDER CONFIGURATION"):
+        save_config({
             "sal": sal, "caaf": caaf, "loyer_in": loyer_in, "h_sup": h_sup, "rev_extra": rev_extra,
             "l_out": l_out, "a_emp": a_emp, "t_net": t_net, "e_eau": e_eau, "mgen": mgen,
             "kona": kona, "fam": fam, "a_vie": a_vie, "remboursement": remboursement,
             "obj_decouvert": obj_decouvert, "budget_bouffe": budget_bouffe,
             "active_agathe": 1 if active_agathe else 0, "mode_urgence": 1 if mode_urgence else 0,
             "last_report": st.session_state.solde_ajustement
-        }
-        save_config(config_a_sauver)
-        st.success("Toutes les variables sont enregistrées dans Config !")
+        })
+        st.success("Config Cloud OK !")
 
-# --- CALCULS PRÉCIS ---
+# --- CALCULS ---
 now = datetime.now()
-jours_mois = calendar.monthrange(now.year, now.month)[1]
-
-# 1. Total Revenus
 rev_total = sal + caaf + loyer_in + h_sup + rev_extra
-
-# 2. Total Charges (VÉRIFIÉ : Pas de variable 'Divers' oubliée)
 charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam + a_vie
-
-# 3. Stratégie
-epargne_auto = 1000 if active_agathe else 0
+epargne_agathe = 1000 if active_agathe else 0
 coeff_urg = 0.7 if mode_urgence else 1.0
+budget_mois = rev_total - charges_total - remboursement - epargne_agathe - (budget_bouffe * coeff_urg)
+obj_journalier = budget_mois / calendar.monthrange(now.year, now.month)[1]
 
-# 4. Disponible final
-budget_dispo_mensuel = rev_total - charges_total - remboursement - epargne_auto - (budget_bouffe * coeff_urg)
-obj_journalier = budget_dispo_mensuel / jours_mois
-
-# --- DASHBOARD & GRAPHIQUES ---
+# --- DASHBOARD ---
 st.title(f"💎 Dashboard Agathe : {now.strftime('%B %Y')}")
-df_h = conn.read(worksheet="Historique", ttl=0)
-if df_h is None or df_h.empty:
-    df_h = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
 
-total_depense_mois = pd.to_numeric(df_h["Montant"]).sum()
-reste_reel_jour = obj_journalier + st.session_state.solde_ajustement - df_h[df_h["Date"] == now.strftime("%Y-%m-%d")]["Montant"].sum()
-
-c1, c2, c3 = st.columns(3)
-c1.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
-c2.metric("LIBERTÉ RÉELLE JOUR", f"{reste_reel_jour:.2f} €")
-c3.metric("RESTANT FIN MOIS", f"{(budget_dispo_mensuel + st.session_state.solde_ajustement) - total_depense_mois:.2f} €")
+# LA JAUGE DU DÉCOUVERT (AJOUTÉE ICI)
+st.subheader("🎯 État du Remboursement Découvert")
+progression = min(1.0, remboursement / obj_decouvert)
+st.progress(progression)
+st.caption(f"Progression : {remboursement} € remboursés sur un objectif de {obj_decouvert} € ({int(progression*100)}%)")
 
 st.divider()
 
-# --- ONGLETS ---
-t1, t2, t3 = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ GESTION"])
+# MÉTRIQUES
+df_h = conn.read(worksheet="Historique", ttl=0)
+if df_h is None or df_h.empty: df_h = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
+total_dep = pd.to_numeric(df_h["Montant"]).sum()
+reste_jour = obj_journalier + st.session_state.solde_ajustement - df_h[df_h["Date"] == now.strftime("%Y-%m-%d")]["Montant"].sum()
 
+c1, c2, c3 = st.columns(3)
+c1.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
+c2.metric("DISPO RÉEL JOUR", f"{reste_jour:.2f} €")
+c3.metric("RESTANT FIN MOIS", f"{(budget_mois + st.session_state.solde_ajustement) - total_dep:.2f} €")
+
+# --- VISUALISATION ---
+col1, col2 = st.columns([2, 1])
+with col1:
+    st.subheader("🧬 Évolution Dépenses")
+    if not df_h.empty:
+        fig = px.area(df_h.groupby("Date")["Montant"].sum().reset_index(), x="Date", y="Montant", color_discrete_sequence=["#00f2fe"])
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
+        st.plotly_chart(fig, use_container_width=True)
+with col2:
+    st.subheader("📊 Répartition")
+    if not df_h.empty:
+        fig2 = px.pie(df_h, values='Montant', names='Type', hole=.5, color_discrete_sequence=px.colors.sequential.Teal)
+        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color="white", showlegend=False)
+        st.plotly_chart(fig2, use_container_width=True)
+
+# --- TABS ---
+t1, t2, t3 = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ GESTION"])
 with t1:
-    with st.form("ajout"):
+    with st.form("a"):
         ca, cb, cc = st.columns([2,1,1])
         n = ca.text_input("Désignation")
-        m = cb.number_input("Montant (€)", min_value=0.0)
-        cat = cc.selectbox("Catégorie", ["Courses", "Vie Courante", "Loisirs", "Santé", "Imprévu"])
-        if st.form_submit_button("🔨 VALIDER L'ACHAT"):
-            new_row = pd.DataFrame([{"Date": now.strftime("%Y-%m-%d"), "Nom": n, "Montant": m, "Type": cat, "Mode": "Normal"}])
-            conn.update(worksheet="Historique", data=pd.concat([df_h, new_row], ignore_index=True))
+        m = cb.number_input("Montant", min_value=0.0)
+        cat = cc.selectbox("Type", ["Courses", "Vie Courante", "Loisirs", "Santé", "Imprévu"])
+        if st.form_submit_button("🔨 VALIDER"):
+            new = pd.DataFrame([{"Date": now.strftime("%Y-%m-%d"), "Nom": n, "Montant": m, "Type": cat, "Mode": "Normal"}])
+            conn.update(worksheet="Historique", data=pd.concat([df_h, new], ignore_index=True))
             st.rerun()
 
 with t2:
     st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
-    if st.button("🌙 Clôturer Journée (Report automatique)"):
-        st.session_state.solde_ajustement = reste_reel_jour
+    if st.button("🌙 Clôturer Journée"):
+        st.session_state.solde_ajustement = reste_jour
         st.rerun()
 
 with t3:
-    st.subheader("📦 Archives")
-    if st.button("SAUVEGARDER LE MOIS DANS ARCHIVES"):
+    if st.button("SAUVEGARDER DANS ARCHIVES"):
         try:
             df_arch = conn.read(worksheet="Archives", ttl=0)
             conn.update(worksheet="Archives", data=pd.concat([df_arch, df_h], ignore_index=True))
-            st.success("Archivage OK")
-        except: st.error("Onglet 'Archives' manquant !")
+            st.success("Archivé")
+        except: st.error("Onglet 'Archives' absent")
