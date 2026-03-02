@@ -33,17 +33,15 @@ def load_data():
 
 # --- SESSION STATE ---
 if 'solde_reporte' not in st.session_state: st.session_state.solde_reporte = 0.0
-if 'tresor_agathe' not in st.session_state: st.session_state.tresor_agathe = 0.0
 
 # --- SIDEBAR : PILOTAGE AGATHE ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    st.caption("DNA-Beat v6.5 | 2026")
+    st.caption("DNA-Beat v6.6 | 2026")
     mode_urgence = st.toggle("🚨 MODE VIGILANCE RAPPROCHÉE", value=False)
     
     with st.expander("💰 REVENUS DÉTAILLÉS", expanded=False):
         sal = st.number_input("Salaire Base (€)", value=3500)
-        irl = st.number_input("IRL (Logement) (€)", value=300)
         caaf = st.number_input("CAAF (€)", value=150)
         loyer_in = st.number_input("Loyer Perçu (€)", value=588)
         h_sup = st.number_input("Heures Sup (€)", value=500)
@@ -70,13 +68,12 @@ with st.sidebar:
 now = datetime.now()
 jours_mois = calendar.monthrange(now.year, now.month)[1]
 
-# Totalisation dynamique des revenus et charges
-rev_total = sal + irl + caaf + loyer_in + h_sup
+# Revenus sans IRL
+rev_total = sal + caaf + loyer_in + h_sup
 charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam + div
 epargne_auto = 1000 if active_agathe else 0
 coeff_urgence = 0.7 if mode_urgence else 1.0
 
-# Calcul du budget journalier
 budget_dispo_mois = rev_total - charges_total - decouvert_mensuel - epargne_auto - (courses_budget * coeff_urgence)
 obj_journalier = budget_dispo_mois / jours_mois
 
@@ -112,11 +109,10 @@ with col_left:
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Saisissez votre premier achat pour voir la courbe.")
+        st.info("En attente de données...")
 
 with col_right:
     st.subheader("🎯 Suivi Découvert")
-    # Progression basée sur ton nouvel objectif de 2000€
     progression_decouvert = min(1.0, (decouvert_mensuel / (objectif_decouvert if objectif_decouvert > 0 else 1)))
     st.progress(progression_decouvert)
     st.write(f"Remboursement : {decouvert_mensuel}€ / {objectif_decouvert}€")
@@ -157,8 +153,5 @@ with tab_histo:
 
 with tab_tresor:
     st.subheader("💰 Capital Sécurisé")
-    st.write("Ce montant est mis de côté avant même le calcul de votre budget quotidien.")
     st.metric("Trésor Agathe Prévu", f"{epargne_auto:.2f} €")
-    if st.button("🏁 Reset Session Trésor"):
-        st.session_state.tresor_agathe = 0.0
-        st.rerun()
+    st.write("Ce montant est prélevé sur votre budget pour garantir votre épargne.")
