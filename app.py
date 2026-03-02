@@ -24,7 +24,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 def load_data():
     try:
         df = conn.read(worksheet="Historique", ttl=0)
-        # Sécurité : Forcer les colonnes si le sheet est vide
         cols = ["Date", "Nom", "Montant", "Type", "Mode"]
         if df is None or df.empty:
             return pd.DataFrame(columns=cols)
@@ -86,7 +85,6 @@ with tab1:
     df_h = load_data()
     aujourdhui = now.strftime("%Y-%m-%d")
     
-    # Calcul sécurisé
     try:
         depenses_today = pd.to_numeric(df_h[df_h["Date"] == aujourdhui]["Montant"], errors='coerce').sum()
     except:
@@ -94,14 +92,52 @@ with tab1:
         
     dispo_aujourdhui = budget_jour_base + st.session_state.solde_reporte - depenses_today
     
-    # Score Discipline
     try:
         total_depense_mois = pd.to_numeric(df_h["Montant"], errors='coerce').sum()
         score = max(0, min(100, int(100 - (total_depense_mois / (reste_mensuel + 1) * 100))))
     except:
         score = 100
 
-    # RÉPARATION ICI : Ajout des parenthèses ()
     col1, col2, col3 = st.columns(3)
     col1.metric("OBJECTIF JOUR", f"{budget_jour_base:.2f} €")
-    col2.metric("RESTE
+    col2.metric("RESTE RÉEL", f"{dispo_aujourdhui:.2f} €", delta=f"{st.session_state.solde_reporte:.2f} Report")
+    with col3:
+        st.markdown(f"<div class='discipline-score'>{score}%</div>", unsafe_allow_html=True)
+        st.caption("<p style='text-align:center;'>Discipline du Mois</p>", unsafe_allow_html=True)
+
+    st.divider()
+    with st.form("saisie_achat"):
+        ca, cb = st.columns(2)
+        n = ca.text_input("Désignation")
+        m = cb.number_input("Montant (€)", min_value=0.0)
+        if st.form_submit_button("🔨 ENREGISTRER SUR CLOUD"):
+            if n and m > 0:
+                new_line = pd.DataFrame([{"Date": aujourdhui, "Nom": n, "Montant": m, "Type": "Vie", "Mode": "Urgence" if mode_urgence else "Normal"}])
+                updated_df = pd.concat([df_h, new_line], ignore_index=True)
+                conn.update(worksheet="Historique", data=updated_df)
+                st.success("Synchronisé !")
+                st.rerun()
+
+    c_btn1, c_btn2 = st.columns(2)
+    if c_btn1.button("🌙 Clôturer & Reporter"):
+        st.session_state.solde_reporte = dispo_aujourdhui
+        if active_agathe: st.session_state.tresor_agathe += (1000 / jours_dans_le_mois)
+        st.rerun()
+    if c_btn2.button("🔄 Reset Report"):
+        st.session_state.solde_reporte = 0.0
+        st.rerun()
+
+with tab2:
+    st.subheader("Archives Cloud")
+    st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
+    if st.button("🗑️ Reset Historique (Vide Google Sheet)"):
+        conn.update(worksheet="Historique", data=pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"]))
+        st.rerun()
+
+with tab3:
+    st.subheader("Capital Agathe")
+    st.metric("Trésor Accumulé", f"{st.session_state.tresor_agathe:.2f} €")
+    st.progress(min(1.0, st.session_state.tresor_agathe / 10000))
+    if st.button("🏁 Reset Trésor"):
+        st.session_state.tresor_agathe = 0.0
+        st.rerun()
