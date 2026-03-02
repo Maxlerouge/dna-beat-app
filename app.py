@@ -38,33 +38,46 @@ if 'tresor_agathe' not in st.session_state: st.session_state.tresor_agathe = 0.0
 # --- SIDEBAR : PILOTAGE AGATHE ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    st.caption("DNA-Beat v6.4 | 2026")
+    st.caption("DNA-Beat v6.5 | 2026")
     mode_urgence = st.toggle("🚨 MODE VIGILANCE RAPPROCHÉE", value=False)
     
-    with st.expander("💰 REVENUS INSTITUTEUR", expanded=False):
-        sal = st.number_input("Salaire Base", value=3500)
-        irl = st.number_input("IRL (Logement)", value=300)
-        caaf = st.number_input("CAAF", value=150)
-        loyer_in = st.number_input("Loyer Perçu", value=588)
-        h_sup = st.number_input("Heures Sup (Prévues)", value=500)
+    with st.expander("💰 REVENUS DÉTAILLÉS", expanded=False):
+        sal = st.number_input("Salaire Base (€)", value=3500)
+        irl = st.number_input("IRL (Logement) (€)", value=300)
+        caaf = st.number_input("CAAF (€)", value=150)
+        loyer_in = st.number_input("Loyer Perçu (€)", value=588)
+        h_sup = st.number_input("Heures Sup (€)", value=500)
     
-    with st.expander("🏠 CHARGES & DETTES", expanded=False):
-        fixes = st.number_input("Total Charges (Loyer/MGEN/Kona)", value=2328)
-        decouvert_mensuel = st.number_input("Remboursement Découvert", value=600)
-        objectif_decouvert = st.number_input("Cible Découvert Total (€)", value=3000)
+    with st.expander("🏠 CHARGES FIXES DÉTAILLÉES", expanded=False):
+        l_out = st.number_input("Loyer / Emprunt (€)", value=850)
+        a_emp = st.number_input("Assurance Emprunt (€)", value=200)
+        t_net = st.number_input("Tel + Internet (€)", value=90)
+        e_eau = st.number_input("EDF + Eau (€)", value=298)
+        mgen = st.number_input("MGEN (€)", value=160)
+        kona = st.number_input("Kona + Assurance (€)", value=415)
+        fam = st.number_input("Famille / Enfants (€)", value=200)
+        div = st.number_input("Divers / Autres (€)", value=110)
+        
+    with st.expander("📉 GESTION DÉCOUVERT", expanded=True):
+        decouvert_mensuel = st.number_input("Remboursement ce mois (€)", value=600)
+        objectif_decouvert = st.number_input("Découvert total à combler (€)", value=2000)
 
     with st.expander("🎯 STRATÉGIE ÉPARGNE", expanded=True):
-        courses_budget = st.slider("Budget Courses", 300, 900, 600)
+        courses_budget = st.slider("Budget Courses (€)", 300, 900, 600)
         active_agathe = st.toggle("Activer Trésor Agathe (1000€)", value=False)
 
 # --- CALCULS ---
 now = datetime.now()
 jours_mois = calendar.monthrange(now.year, now.month)[1]
+
+# Totalisation dynamique des revenus et charges
 rev_total = sal + irl + caaf + loyer_in + h_sup
+charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam + div
 epargne_auto = 1000 if active_agathe else 0
 coeff_urgence = 0.7 if mode_urgence else 1.0
 
-budget_dispo_mois = rev_total - fixes - decouvert_mensuel - epargne_auto - (courses_budget * coeff_urgence)
+# Calcul du budget journalier
+budget_dispo_mois = rev_total - charges_total - decouvert_mensuel - epargne_auto - (courses_budget * coeff_urgence)
 obj_journalier = budget_dispo_mois / jours_mois
 
 # --- INTERFACE ---
@@ -88,28 +101,27 @@ with c3:
 
 st.markdown("---")
 
-# --- GRAPHIQUES (CORRIGÉS) ---
+# --- GRAPHIQUES ---
 col_left, col_right = st.columns([2, 1])
 
 with col_left:
     st.subheader("🧬 Courbe des Dépenses")
     if not df_h.empty:
-        # Courbe lissée des dépenses par jour
         df_daily = df_h.groupby("Date")["Montant"].sum().reset_index()
         fig = px.line(df_daily, x="Date", y="Montant", markers=True, color_discrete_sequence=["#00f2fe"])
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("En attente de données pour tracer la courbe...")
+        st.info("Saisissez votre premier achat pour voir la courbe.")
 
 with col_right:
     st.subheader("🎯 Suivi Découvert")
+    # Progression basée sur ton nouvel objectif de 2000€
     progression_decouvert = min(1.0, (decouvert_mensuel / (objectif_decouvert if objectif_decouvert > 0 else 1)))
     st.progress(progression_decouvert)
     st.write(f"Remboursement : {decouvert_mensuel}€ / {objectif_decouvert}€")
     
     if not df_h.empty:
-        # CORRECTION ICI : Utilisation de px.colors.sequential.Teal
         fig2 = px.pie(df_h, values='Montant', names='Type', hole=.5, color_discrete_sequence=px.colors.sequential.Teal)
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color="white", showlegend=False)
         st.plotly_chart(fig2, use_container_width=True)
@@ -145,8 +157,8 @@ with tab_histo:
 
 with tab_tresor:
     st.subheader("💰 Capital Sécurisé")
-    # Simulation de l'accumulation
-    st.metric("Trésor Agathe Estimé", f"{st.session_state.tresor_agathe:.2f} €")
-    if st.button("🏁 Reset Trésor"):
+    st.write("Ce montant est mis de côté avant même le calcul de votre budget quotidien.")
+    st.metric("Trésor Agathe Prévu", f"{epargne_auto:.2f} €")
+    if st.button("🏁 Reset Session Trésor"):
         st.session_state.tresor_agathe = 0.0
         st.rerun()
