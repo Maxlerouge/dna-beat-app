@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import datetime
 import calendar
 
-# --- CONFIGURATION & DESIGN (Nom Agathe Budget partout) ---
+# --- CONFIGURATION & DESIGN ---
 st.set_page_config(page_title="Agathe Budget | Pilotage", page_icon="💎", layout="wide")
 
 st.markdown("""
@@ -38,7 +38,7 @@ if 'tresor_agathe' not in st.session_state: st.session_state.tresor_agathe = 0.0
 # --- SIDEBAR : PILOTAGE AGATHE ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    st.caption("Système DNA-Beat v6.3")
+    st.caption("DNA-Beat v6.4 | 2026")
     mode_urgence = st.toggle("🚨 MODE VIGILANCE RAPPROCHÉE", value=False)
     
     with st.expander("💰 REVENUS INSTITUTEUR", expanded=False):
@@ -88,26 +88,29 @@ with c3:
 
 st.markdown("---")
 
-# --- GRAPHIQUES ---
+# --- GRAPHIQUES (CORRIGÉS) ---
 col_left, col_right = st.columns([2, 1])
 
 with col_left:
     st.subheader("🧬 Courbe des Dépenses")
     if not df_h.empty:
-        fig = px.area(df_h.groupby("Date")["Montant"].sum().reset_index(), x="Date", y="Montant", color_discrete_sequence=["#00f2fe"])
+        # Courbe lissée des dépenses par jour
+        df_daily = df_h.groupby("Date")["Montant"].sum().reset_index()
+        fig = px.line(df_daily, x="Date", y="Montant", markers=True, color_discrete_sequence=["#00f2fe"])
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("En attente de données...")
+        st.info("En attente de données pour tracer la courbe...")
 
 with col_right:
     st.subheader("🎯 Suivi Découvert")
-    progression_decouvert = min(1.0, (decouvert_mensuel / objectif_decouvert))
+    progression_decouvert = min(1.0, (decouvert_mensuel / (objectif_decouvert if objectif_decouvert > 0 else 1)))
     st.progress(progression_decouvert)
     st.write(f"Remboursement : {decouvert_mensuel}€ / {objectif_decouvert}€")
     
     if not df_h.empty:
-        fig2 = px.pie(df_h, values='Montant', names='Type', hole=.5, color_discrete_sequence=px.colors.sequential.Cyan_r)
+        # CORRECTION ICI : Utilisation de px.colors.sequential.Teal
+        fig2 = px.pie(df_h, values='Montant', names='Type', hole=.5, color_discrete_sequence=px.colors.sequential.Teal)
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color="white", showlegend=False)
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -118,7 +121,7 @@ with tab_saisie:
     with st.form("form_saisie"):
         c_a, c_b, c_c = st.columns([2,1,1])
         n = c_a.text_input("Désignation")
-        m = c_b.number_input("Montant (€)", min_value=0.0)
+        m = c_b.number_input("Montant (€)", min_value=0.0, step=0.01)
         t = c_c.selectbox("Catégorie", ["Vie Courante", "Courses", "Loisirs", "Santé", "Imprévu"])
         if st.form_submit_button("🔨 ENREGISTRER SUR LE CLOUD"):
             if n and m > 0:
@@ -142,7 +145,8 @@ with tab_histo:
 
 with tab_tresor:
     st.subheader("💰 Capital Sécurisé")
-    st.metric("Trésor Agathe", f"{st.session_state.tresor_agathe:.2f} €")
+    # Simulation de l'accumulation
+    st.metric("Trésor Agathe Estimé", f"{st.session_state.tresor_agathe:.2f} €")
     if st.button("🏁 Reset Trésor"):
         st.session_state.tresor_agathe = 0.0
         st.rerun()
