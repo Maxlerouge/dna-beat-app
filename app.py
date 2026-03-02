@@ -37,7 +37,7 @@ if 'solde_ajustement' not in st.session_state: st.session_state.solde_ajustement
 # --- SIDEBAR : PILOTAGE COMPLET ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    st.caption("DNA-Beat v7.0 | Full Edition")
+    st.caption("DNA-Beat v7.1 | Perfection")
     
     with st.expander("💰 REVENUS", expanded=False):
         sal = st.number_input("Salaire Base (€)", value=3500)
@@ -57,6 +57,7 @@ with st.sidebar:
         mgen = st.number_input("MGEN (€)", value=160)
         kona = st.number_input("Kona + Assurance (€)", value=415)
         fam = st.number_input("Famille / Enfants (€)", value=200)
+        a_vie = st.number_input("Assurance Vie (€)", value=50) # AJOUTÉ ICI
         
     with st.expander("📉 DÉCOUVERT & ÉPARGNE", expanded=True):
         remboursement = st.number_input("Remboursement ce mois (€)", value=995)
@@ -68,9 +69,10 @@ with st.sidebar:
 now = datetime.now()
 jours_mois = calendar.monthrange(now.year, now.month)[1]
 rev_total = sal + caaf + loyer_in + h_sup + rev_extra
-charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam
+charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam + a_vie # Inclus Assurance Vie
 epargne_auto = 1000 if active_agathe else 0
 
+# Calcul du disponible mensuel après TOUTES les obligations
 budget_dispo_mois = rev_total - charges_total - remboursement - epargne_auto
 obj_journalier = budget_dispo_mois / jours_mois
 
@@ -101,11 +103,11 @@ with col_left:
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Aucune donnée pour le graphique.")
+        st.info("Aucune dépense enregistrée pour le moment.")
 
 with col_right:
     st.subheader("🎯 Suivi & Répartition")
-    # Barre de progression Découvert
+    # Progression Découvert
     prog = min(1.0, (remboursement / (obj_decouvert if obj_decouvert > 0 else 1)))
     st.write(f"Découvert : {remboursement}€ / {obj_decouvert}€")
     st.progress(prog)
@@ -124,7 +126,7 @@ with tab_saisie:
         n = ca.text_input("Désignation")
         m = cb.number_input("Montant (€)", min_value=0.0, step=0.01)
         t = cc.selectbox("Catégorie", ["Vie Courante", "Courses", "Loisirs", "Santé", "Imprévu"])
-        if st.form_submit_button("🔨 ENREGISTRER"):
+        if st.form_submit_button("🔨 ENREGISTRER SUR LE CLOUD"):
             if n and m > 0:
                 new_l = pd.DataFrame([{"Date": aujourdhui, "Nom": n, "Montant": m, "Type": t, "Mode": "Urgence" if mode_urgence else "Normal"}])
                 conn.update(worksheet="Historique", data=pd.concat([df_h, new_l], ignore_index=True))
@@ -133,16 +135,16 @@ with tab_saisie:
 
 with tab_histo:
     st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
-    if st.button("🌙 Clôturer & Reporter le solde"):
+    if st.button("🌙 Clôturer la Journée & Reporter le surplus"):
         st.session_state.solde_ajustement = reste_reel_jour
         st.rerun()
 
 with tab_tresor:
-    st.subheader("💎 Trésor Agathe")
-    st.metric("Épargne Sécurisée ce mois", f"{epargne_auto:.2f} €")
-    st.write("Ce montant est soustrait de votre disponible pour garantir votre capital.")
-    if epargne_auto > 0:
-        st.success("Félicitations ! Votre stratégie d'épargne est active.")
+    st.subheader("💎 Trésor & Assurance")
+    col1, col2 = st.columns(2)
+    col1.metric("Épargne Agathe (1000€)", "ACTIVE" if active_agathe else "OFF")
+    col2.metric("Assurance Vie Mensuelle", f"{a_vie} €")
+    st.write("Ces montants sont automatiquement déduits de votre budget quotidien pour garantir la croissance de votre patrimoine.")
 
 with tab_admin:
     st.subheader("🛡️ Gestion des Archives")
@@ -151,11 +153,11 @@ with tab_admin:
             df_arch = load_data("Archives")
             df_final_arch = pd.concat([df_arch, df_h], ignore_index=True)
             conn.update(worksheet="Archives", data=df_final_arch)
-            st.success("Sauvegarde réussie !")
+            st.success("Sauvegarde terminée avec succès !")
         except:
-            st.error("Créez l'onglet 'Archives' dans Google Sheets !")
+            st.error("L'onglet 'Archives' est manquant dans Google Sheets.")
 
-    if st.button("🗑️ RESET TOTAL DU MOIS"):
+    if st.button("🗑️ RESET COMPLET DU MOIS"):
         conn.update(worksheet="Historique", data=pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"]))
         st.session_state.solde_ajustement = 0.0
         st.rerun()
