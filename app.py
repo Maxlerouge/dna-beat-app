@@ -469,7 +469,7 @@ with m4:
 if reste_jour < 0:
     st.markdown(f'<div class="fun-alert-danger">😬 <b>Attention !</b> Tu as dépassé ton budget journalier de <b>{abs(reste_jour):.2f} €</b>. Tiens bon !</div>', unsafe_allow_html=True)
 elif reste_jour > obj_journalier * 1.5:
-    st.markdown(f'<div class="fun-alert-success">🎉 <b>Super !</b> Tu as {reste_jour:.2f} € disponibles aujourd'hui — tu gères !</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="fun-alert-success">🎉 <b>Super !</b> Tu as {reste_jour:.2f} \u20ac disponibles aujourd\'hui - tu gères !</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="rainbow-divider"></div>', unsafe_allow_html=True)
 
@@ -516,7 +516,7 @@ with g1:
         fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.05)", tickfont=dict(color="#9E9BBF"))
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.markdown('<div class="fun-alert">📭 Aucune dépense ce mois-ci. C'est le bon début !</div>', unsafe_allow_html=True)
+        st.markdown('<div class="fun-alert">📭 Aucune dépense ce mois-ci. C\'est le bon début !</div>', unsafe_allow_html=True)
 
 with g2:
     st.markdown("### 🍩 Répartition par Catégorie")
