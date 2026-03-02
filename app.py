@@ -33,10 +33,9 @@ def save_config(d):
 
 conf_cloud = load_config()
 
-# --- SIDEBAR (100% DES VARIABLES RÉINTÉGRÉES) ---
+# --- SIDEBAR (TOUTES LES VARIABLES) ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    
     with st.expander("💰 REVENUS", expanded=False):
         sal = st.number_input("Salaire Base", value=float(conf_cloud.get("sal", 3500.0)))
         caaf = st.number_input("CAAF", value=float(conf_cloud.get("caaf", 150.0)))
@@ -74,27 +73,28 @@ with st.sidebar:
             "active_agathe": 1 if active_agathe else 0, "mode_urgence": 1 if mode_urgence else 0,
             "last_report": st.session_state.solde_ajustement
         })
-        st.success("Config Cloud Mise à jour !")
+        st.success("Config Cloud OK !")
 
-# --- MOTEUR DE CALCUL (SÉCURITÉ MAX) ---
-now = datetime.today()
-jours_dans_mois = calendar.monthrange(now.year, now.month)[1]
-
+# --- MOTEUR DE CALCUL (RÉCRITURE ANTI-CRASH) ---
+now = datetime.now()
 df_raw = conn.read(worksheet="Historique", ttl=0)
 
-# On prépare un dataframe propre même si le Sheets est vide
-if df_raw is None or df_raw.empty:
-    df_h = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
-    df_mois = df_h.copy()
-else:
+# On initialise des DataFrames de secours
+df_h = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
+df_mois = df_h.copy()
+
+if df_raw is not None and not df_raw.empty:
+    # 1. Conversion Forcée
+    df_raw["Date"] = pd.to_datetime(df_raw["Date"], errors='coerce')
+    df_raw = df_raw.dropna(subset=["Date"]) # On tue les lignes vides
+    df_raw["Montant"] = pd.to_numeric(df_raw["Montant"], errors='coerce').fillna(0)
     df_h = df_raw.copy()
-    # CONVERSION CRITIQUE : on force le format et on vire ce qui n'est pas une date
-    df_h["Date"] = pd.to_datetime(df_h["Date"], errors='coerce')
-    df_h = df_h.dropna(subset=["Date"])
-    df_h["Montant"] = pd.to_numeric(df_h["Montant"], errors='coerce').fillna(0)
     
-    # FILTRAGE SANS RISQUE
-    df_mois = df_h[(df_h["Date"].dt.month == now.month) & (df_h["Date"].dt.year == now.year)].copy()
+    # 2. Filtrage Temporel par extraction directe (plus robuste que .dt)
+    cur_month = now.month
+    cur_year = now.year
+    df_mois = df_h[ (df_h["Date"].apply(lambda x: x.month) == cur_month) & 
+                    (df_h["Date"].apply(lambda x: x.year) == cur_year) ].copy()
 
 # Calculs Budget
 rev_total = sal + caaf + loyer_in + h_sup + rev_extra
@@ -103,45 +103,44 @@ epargne_agathe = 1000 if active_agathe else 0
 coeff_urg = 0.7 if mode_urgence else 1.0
 
 budget_mois_dispo = rev_total - charges_total - remboursement - epargne_agathe - (budget_bouffe * coeff_urg)
-obj_journalier = budget_mois_dispo / jours_dans_mois
+obj_journalier = budget_mois_dispo / calendar.monthrange(now.year, now.month)[1]
 
-# Calculs Dépenses
+# Calculs Dépenses (Sans accesseur .dt risqué)
 total_depenses_mois = df_mois["Montant"].sum()
-# Comparaison de dates simplifiée pour éviter l'erreur .dt
-today_str = now.strftime('%Y-%m-%d')
-depense_aujourdhui = df_mois[df_mois["Date"].dt.strftime('%Y-%m-%d') == today_str]["Montant"].sum()
+today_only = now.date()
+depense_aujourdhui = df_mois[df_mois["Date"].apply(lambda x: x.date()) == today_only]["Montant"].sum()
+
 reste_reel_jour = obj_journalier + st.session_state.solde_ajustement - depense_aujourdhui
 
-# --- INTERFACE ---
+# --- DASHBOARD ---
 st.title(f"💎 Agathe Budget : {now.strftime('%B %Y')}")
-
-# JAUGE DÉCOUVERT
 st.subheader("🎯 Progression du Remboursement")
-prog = min(1.0, remboursement / obj_decouvert)
-st.progress(prog)
-st.caption(f"{remboursement}€ payés sur {obj_decouvert}€ ({int(prog*100)}%)")
+st.progress(min(1.0, remboursement / obj_decouvert))
+st.caption(f"{remboursement}€ sur {obj_decouvert}€")
 
 st.divider()
 
-col1, col2, col3 = st.columns(3)
-col1.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
-col2.metric("DISPO RÉEL JOUR", f"{reste_reel_jour:.2f} €", delta=f"{st.session_state.solde_ajustement:.2f}")
-col3.metric("SOLDE FIN MOIS", f"{(budget_mois_dispo + st.session_state.solde_ajustement) - total_depenses_mois:.2f} €")
+c1, c2, c3 = st.columns(3)
+c1.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
+c2.metric("DISPO JOUR", f"{reste_reel_jour:.2f} €", delta=f"{st.session_state.solde_ajustement:.2f}")
+c3.metric("FIN MOIS PRÉVU", f"{(budget_mois_dispo + st.session_state.solde_ajustement) - total_depenses_mois:.2f} €")
 
 st.divider()
 
-# --- GRAPHIQUES ---
-ga, gb = st.columns([2, 1])
-with ga:
-    st.subheader("🧬 Évolution Dépenses")
+# --- VISUELS ---
+g1, g2 = st.columns([2, 1])
+with g1:
+    st.subheader("🧬 Évolution")
     if not df_mois.empty:
-        df_p = df_mois.groupby(df_mois["Date"].dt.date)["Montant"].sum().reset_index()
-        fig = px.area(df_p, x="Date", y="Montant", color_discrete_sequence=["#00f2fe"])
+        df_p = df_mois.copy()
+        df_p["Date_Str"] = df_p["Date"].apply(lambda x: x.strftime('%Y-%m-%d'))
+        df_plot = df_p.groupby("Date_Str")["Montant"].sum().reset_index()
+        fig = px.area(df_plot, x="Date_Str", y="Montant", color_discrete_sequence=["#00f2fe"])
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
 
-with gb:
-    st.subheader("📊 Répartition")
+with g2:
+    st.subheader("📊 Postes")
     if not df_mois.empty:
         fig2 = px.pie(df_mois, values='Montant', names='Type', hole=.5, color_discrete_sequence=px.colors.sequential.Teal)
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color="white", showlegend=False)
@@ -150,14 +149,14 @@ with gb:
 # --- TABS ---
 t1, t2, t3 = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ ARCHIVES"])
 with t1:
-    with st.form("add"):
-        c_a, c_b, c_c = st.columns([2,1,1])
-        n = c_a.text_input("Désignation")
-        m = c_b.number_input("Montant", min_value=0.0)
-        t = c_c.selectbox("Catégorie", ["Courses", "Vie Courante", "Loisirs", "Santé", "Imprévu"])
+    with st.form("f"):
+        ca, cb, cc = st.columns([2,1,1])
+        n = ca.text_input("Désignation")
+        m = cb.number_input("Montant", min_value=0.0)
+        t = cc.selectbox("Catégorie", ["Courses", "Vie Courante", "Loisirs", "Santé", "Imprévu"])
         if st.form_submit_button("VALIDER"):
-            new_row = pd.DataFrame([{"Date": now.strftime("%Y-%m-%d"), "Nom": n, "Montant": m, "Type": t, "Mode": "Normal"}])
-            conn.update(worksheet="Historique", data=pd.concat([df_h, new_row], ignore_index=True))
+            new = pd.DataFrame([{"Date": now.strftime("%Y-%m-%d"), "Nom": n, "Montant": m, "Type": t, "Mode": "Normal"}])
+            conn.update(worksheet="Historique", data=pd.concat([df_h, new], ignore_index=True))
             st.rerun()
 
 with t2:
@@ -171,5 +170,5 @@ with t3:
         try:
             df_arch = conn.read(worksheet="Archives", ttl=0)
             conn.update(worksheet="Archives", data=pd.concat([df_arch, df_h], ignore_index=True))
-            st.success("Archivage OK")
+            st.success("Archivé !")
         except: st.error("Onglet Archives ?")
