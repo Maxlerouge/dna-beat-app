@@ -5,8 +5,8 @@ import plotly.express as px
 from datetime import datetime
 import calendar
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="Agathe Budget | Pilotage", page_icon="💎", layout="wide")
+# --- CONFIGURATION & DESIGN ---
+st.set_page_config(page_title="Agathe Budget | DNA-Beat", page_icon="💎", layout="wide")
 
 st.markdown("""
     <style>
@@ -18,7 +18,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONNEXION ---
+# --- CONNEXION CLOUD ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data(sheet_name="Historique"):
@@ -31,24 +31,25 @@ def load_data(sheet_name="Historique"):
     except:
         return pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
 
+# --- MÉMOIRE SOLDE ---
 if 'solde_ajustement' not in st.session_state: st.session_state.solde_ajustement = 0.0
 
-# --- SIDEBAR : PILOTAGE AGATHE ---
+# --- SIDEBAR : TOUTES LES VARIABLES ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    st.caption("DNA-Beat v7.2 | 2026")
+    st.caption("Projet DNA-Beat | v7.4")
     
-    with st.expander("💰 REVENUS", expanded=False):
+    with st.expander("💰 REVENUS (Modifiables)", expanded=False):
         sal = st.number_input("Salaire Base (€)", value=3500)
         caaf = st.number_input("CAAF (€)", value=150)
         loyer_in = st.number_input("Loyer Perçu (€)", value=588)
         h_sup = st.number_input("Heures Sup (€)", value=500)
         rev_extra = st.number_input("Revenu Supplémentaire (€)", value=0.0)
     
-    with st.expander("⚙️ RÉGLAGE SOLDE / REPORT", expanded=True):
+    with st.expander("⚙️ AJUSTEMENT SOLDE BANQUE", expanded=True):
         st.session_state.solde_ajustement = st.number_input("Ajustement / Report (€)", value=st.session_state.solde_ajustement)
 
-    with st.expander("🏠 CHARGES FIXES", expanded=False):
+    with st.expander("🏠 CHARGES FIXES (Modifiables)", expanded=False):
         l_out = st.number_input("Loyer / Emprunt (€)", value=850)
         a_emp = st.number_input("Assurance Emprunt (€)", value=200)
         t_net = st.number_input("Tel + Internet (€)", value=90)
@@ -56,52 +57,52 @@ with st.sidebar:
         mgen = st.number_input("MGEN (€)", value=160)
         kona = st.number_input("Kona + Assurance (€)", value=415)
         fam = st.number_input("Famille / Enfants (€)", value=200)
-        a_vie = st.number_input("Assurance Vie (€)", value=50) # LA VOICI
+        a_vie = st.number_input("Assurance Vie (€)", value=50) # Variable Assurance Vie
 
-    with st.expander("📉 DÉCOUVERT & ÉPARGNE", expanded=True):
-        remboursement = st.number_input("Remboursement ce mois (€)", value=995)
-        obj_decouvert = st.number_input("Découvert total à combler (€)", value=2000)
+    with st.expander("📉 DÉCOUVERT & STRATÉGIE", expanded=True):
+        remboursement = st.number_input("Remboursement ce mois (€)", value=600) # Réglé à 600
+        obj_decouvert = st.number_input("Découvert Total (Cible)", value=2000) # Cible 2000
+        budget_bouffe = st.slider("Budget Courses / Bouffe (€)", 300, 1000, 600) # Curseur Bouffe
         active_agathe = st.toggle("Activer Trésor Agathe (1000€)", value=False)
         mode_urgence = st.toggle("🚨 MODE VIGILANCE", value=False)
 
-# --- CALCULS (VÉRIFIÉS) ---
+# --- LOGIQUE DE CALCUL ---
 now = datetime.now()
-jours_mois = calendar.monthrange(now.year, now.month)[1]
+jours_dans_mois = calendar.monthrange(now.year, now.month)[1]
 
-# Somme totale des revenus
+# Calculs totaux
 rev_total = sal + caaf + loyer_in + h_sup + rev_extra
-
-# Somme totale des charges incluant l'Assurance Vie
 charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam + a_vie
+epargne_agathe = 1000 if active_agathe else 0
+coeff_urg = 0.7 if mode_urgence else 1.0
 
-# Épargne forcée
-epargne_auto = 1000 if active_agathe else 0
+# Budget mensuel restant après obligations
+# (Revenus - Charges - Remboursement - Epargne - Budget Courses réservé)
+budget_restant_mois = rev_total - charges_total - remboursement - epargne_agathe - (budget_bouffe * coeff_urg)
+obj_journalier = budget_restant_mois / jours_dans_mois
 
-# Calcul du disponible mensuel réel
-budget_dispo_mois = rev_total - charges_total - remboursement - epargne_auto
-
-# Objectif journalier (Cible ~30€/jour avec tes réglages)
-obj_journalier = budget_dispo_mois / jours_mois
-
-# --- DASHBOARD ---
-st.title(f"💎 Agathe Budget : {now.strftime('%B %Y')}")
+# --- DASHBOARD PRINCIPAL ---
+st.title(f"💎 Pilotage Agathe Budget : {now.strftime('%B %Y')}")
 
 df_h = load_data()
 total_depense_mois = df_h["Montant"].sum()
 aujourdhui = now.strftime("%Y-%m-%d")
 depense_jour = df_h[df_h["Date"] == aujourdhui]["Montant"].sum()
+
+# Calcul du disponible réel du jour
 reste_reel_jour = obj_journalier + st.session_state.solde_ajustement - depense_jour
 
 c1, c2, c3 = st.columns(3)
 c1.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
-c2.metric("DISPONIBLE RÉEL", f"{reste_reel_jour:.2f} €", delta=f"{st.session_state.solde_ajustement:.2f} Reporté")
-c3.metric("SOLDE PRÉVISIONNEL", f"{(budget_dispo_mois + st.session_state.solde_ajustement) - total_depense_mois:.2f} €")
+c2.metric("DISPONIBLE RÉEL", f"{reste_reel_jour:.2f} €", delta=f"{st.session_state.solde_ajustement:.2f} Ajusté")
+c3.metric("PRÉVISION FIN MOIS", f"{(budget_restant_mois + st.session_state.solde_ajustement) - total_depense_mois:.2f} €")
 
 st.divider()
 
-# --- VISUALISATION ---
-col_left, col_right = st.columns([2, 1])
-with col_left:
+# --- ANALYSE ET GRAPHIQUES ---
+col_graph, col_stat = st.columns([2, 1])
+
+with col_graph:
     st.subheader("🧬 Évolution des Dépenses")
     if not df_h.empty:
         df_daily = df_h.groupby("Date")["Montant"].sum().reset_index()
@@ -109,51 +110,58 @@ with col_left:
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Aucune donnée enregistrée.")
+        st.info("Aucun achat enregistré pour le moment.")
 
-with col_right:
-    st.subheader("🎯 Suivi Découvert")
-    prog = min(1.0, (remboursement / (obj_decouvert if obj_decouvert > 0 else 1)))
-    st.progress(prog)
+with col_stat:
+    st.subheader("🎯 Progression")
+    # Barre de progression du remboursement
+    p_decouvert = min(1.0, (remboursement / (obj_decouvert if obj_decouvert > 0 else 1)))
     st.write(f"Remboursement : {remboursement}€ / {obj_decouvert}€")
+    st.progress(p_decouvert)
+    
     if not df_h.empty:
         fig2 = px.pie(df_h, values='Montant', names='Type', hole=.5, color_discrete_sequence=px.colors.sequential.Teal)
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color="white", showlegend=False)
         st.plotly_chart(fig2, use_container_width=True)
 
-# --- ACTIONS ---
-tab_saisie, tab_histo, tab_admin = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ ARCHIVES"])
+# --- ONGLETS D'ACTIONS ---
+tab_saisie, tab_histo, tab_options = st.tabs(["✍️ SAISIR ACHAT", "📑 HISTORIQUE", "⚙️ ARCHIVES & TRESOR"])
 
 with tab_saisie:
     with st.form("form_saisie"):
         ca, cb, cc = st.columns([2,1,1])
-        n = ca.text_input("Désignation")
-        m = cb.number_input("Montant (€)", min_value=0.0, step=0.01)
-        t = cc.selectbox("Catégorie", ["Vie Courante", "Courses", "Loisirs", "Santé", "Imprévu"])
-        if st.form_submit_button("🔨 ENREGISTRER"):
-            if n and m > 0:
-                new_l = pd.DataFrame([{"Date": aujourdhui, "Nom": n, "Montant": m, "Type": t, "Mode": "Urgence" if mode_urgence else "Normal"}])
-                conn.update(worksheet="Historique", data=pd.concat([df_h, new_l], ignore_index=True))
+        nom_achat = ca.text_input("Désignation")
+        montant_achat = cb.number_input("Montant (€)", min_value=0.0, step=0.01)
+        type_achat = cc.selectbox("Catégorie", ["Vie Courante", "Courses", "Loisirs", "Santé", "Imprévu"])
+        if st.form_submit_button("🔨 ENREGISTRER L'ACHAT"):
+            if nom_achat and montant_achat > 0:
+                new_data = pd.DataFrame([{"Date": aujourdhui, "Nom": nom_achat, "Montant": montant_achat, "Type": type_achat, "Mode": "Urgence" if mode_urgence else "Normal"}])
+                conn.update(worksheet="Historique", data=pd.concat([df_h, new_data], ignore_index=True))
                 st.balloons()
                 st.rerun()
 
 with tab_histo:
     st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
-    if st.button("🌙 Clôturer Journée"):
+    if st.button("🌙 Clôturer Journée (Reporter le solde)"):
         st.session_state.solde_ajustement = reste_reel_jour
         st.rerun()
 
-with tab_admin:
-    st.subheader("🛡️ Archives & Sauvegarde")
-    if st.button("📦 SAUVEGARDER VERS ARCHIVES"):
+with tab_options:
+    st.subheader("💎 Trésor & Patrimoine")
+    st.write(f"Assurance Vie : {a_vie} € (Déduit)")
+    st.write(f"Trésor Agathe : {epargne_agathe} € (Déduit)")
+    
+    st.divider()
+    st.subheader("🛡️ Sauvegarde")
+    if st.button("📦 SAUVEGARDER VERS L'ONGLET ARCHIVES"):
         try:
             df_arch = load_data("Archives")
             conn.update(worksheet="Archives", data=pd.concat([df_arch, df_h], ignore_index=True))
-            st.success("Sauvegarde réussie !")
+            st.success("Données archivées avec succès !")
         except:
-            st.error("Créez l'onglet 'Archives' dans Google Sheets !")
+            st.error("Erreur : Créez l'onglet 'Archives' dans votre Google Sheet.")
 
-    if st.button("🗑️ RESET MOIS"):
+    if st.button("🗑️ REMISE À ZÉRO DU MOIS"):
         conn.update(worksheet="Historique", data=pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"]))
         st.session_state.solde_ajustement = 0.0
         st.rerun()
