@@ -20,93 +20,126 @@ st.markdown("""
 # --- CONNEXION ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- FONCTIONS DE LECTURE/ÉCRITURE ---
-def get_config():
+# --- SYSTÈME DE MÉMOIRE CLOUD ---
+def load_config():
     try:
         df_conf = conn.read(worksheet="Config", ttl=0)
         return dict(zip(df_conf['Variable'], df_conf['Valeur']))
     except:
-        # Valeurs par défaut si l'onglet Config est vide/inexistant
-        return {
-            "sal": 3500.0, "caaf": 150.0, "loyer_in": 588.0, "h_sup": 500.0,
-            "l_out": 850.0, "a_emp": 200.0, "t_net": 90.0, "e_eau": 298.0,
-            "mgen": 160.0, "kona": 415.0, "fam": 200.0, "a_vie": 50.0,
-            "remboursement": 600.0, "budget_bouffe": 600.0
-        }
+        return {}
 
-def save_config(config_dict):
-    df_save = pd.DataFrame(list(config_dict.items()), columns=['Variable', 'Valeur'])
+def save_config(d):
+    df_save = pd.DataFrame(list(d.items()), columns=['Variable', 'Valeur'])
     conn.update(worksheet="Config", data=df_save)
 
-def load_histo():
-    try:
-        df = conn.read(worksheet="Historique", ttl=0)
-        return df if df is not None else pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
-    except:
-        return pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
+conf_cloud = load_config()
 
-# --- CHARGEMENT INITIAL ---
-conf = get_config()
-if 'solde_ajustement' not in st.session_state: st.session_state.solde_ajustement = 0.0
-
-# --- SIDEBAR (MODIFICATIONS SAUVEGARDÉES) ---
+# --- SIDEBAR : VÉRIFICATION DE TOUTES LES VARIABLES ---
 with st.sidebar:
     st.title("💎 AGATHE BUDGET")
-    st.caption("v7.6 | Mémoire Cloud Active")
+    st.caption("DNA-Beat v7.8 | 2026")
     
     with st.expander("💰 REVENUS", expanded=False):
-        c_sal = st.number_input("Salaire Base", value=float(conf.get("sal", 3500)))
-        c_caaf = st.number_input("CAAF", value=float(conf.get("caaf", 150)))
-        c_loyer_in = st.number_input("Loyer Perçu", value=float(conf.get("loyer_in", 588)))
-        c_h_sup = st.number_input("Heures Sup", value=float(conf.get("h_sup", 500)))
+        sal = st.number_input("Salaire Base", value=float(conf_cloud.get("sal", 3500.0)))
+        caaf = st.number_input("CAAF", value=float(conf_cloud.get("caaf", 150.0)))
+        loyer_in = st.number_input("Loyer Perçu", value=float(conf_cloud.get("loyer_in", 588.0)))
+        h_sup = st.number_input("Heures Sup", value=float(conf_cloud.get("h_sup", 500.0)))
+        rev_extra = st.number_input("Revenu Extra", value=float(conf_cloud.get("rev_extra", 0.0)))
+    
+    # Report de solde (Mémoire Session)
+    if 'solde_ajustement' not in st.session_state:
+        st.session_state.solde_ajustement = float(conf_cloud.get("last_report", 0.0))
+    st.session_state.solde_ajustement = st.number_input("Ajustement / Report (€)", value=st.session_state.solde_ajustement)
 
     with st.expander("🏠 CHARGES FIXES", expanded=False):
-        c_lout = st.number_input("Loyer/Prêt", value=float(conf.get("l_out", 850)))
-        c_aemp = st.number_input("Assurance Emprunt", value=float(conf.get("a_emp", 200)))
-        c_eau = st.number_input("EDF/Eau", value=float(conf.get("e_eau", 298)))
-        c_avie = st.number_input("Assurance Vie", value=float(conf.get("a_vie", 50)))
-        # ... (ajoute les autres au besoin sur le même modèle)
+        l_out = st.number_input("Loyer / Emprunt", value=float(conf_cloud.get("l_out", 850.0)))
+        a_emp = st.number_input("Assurance Emprunt", value=float(conf_cloud.get("a_emp", 200.0)))
+        t_net = st.number_input("Tel + Internet", value=float(conf_cloud.get("t_net", 90.0)))
+        e_eau = st.number_input("EDF + Eau", value=float(conf_cloud.get("e_eau", 298.0)))
+        mgen = st.number_input("MGEN", value=float(conf_cloud.get("mgen", 160.0)))
+        kona = st.number_input("Kona + Assurance", value=float(conf_cloud.get("kona", 415.0)))
+        fam = st.number_input("Famille / Enfants", value=float(conf_cloud.get("fam", 200.0)))
+        a_vie = st.number_input("Assurance Vie", value=float(conf_cloud.get("a_vie", 50.0)))
+        # La variable "Divers" est officiellement absente.
 
-    with st.expander("📉 STRATÉGIE", expanded=True):
-        c_remb = st.number_input("Remboursement", value=float(conf.get("remboursement", 600)))
-        c_bouffe = st.slider("Budget Courses", 300, 1000, int(conf.get("budget_bouffe", 600)))
-        active_agathe = st.toggle("Activer Trésor Agathe (1000€)", value=False)
+    with st.expander("📉 DÉCOUVERT & STRATÉGIE", expanded=True):
+        remboursement = st.number_input("Remboursement ce mois", value=float(conf_cloud.get("remboursement", 600.0)))
+        obj_decouvert = st.number_input("Découvert Total Cible", value=float(conf_cloud.get("obj_decouvert", 2000.0)))
+        budget_bouffe = st.slider("Budget Courses / Bouffe (€)", 300, 1000, int(conf_cloud.get("budget_bouffe", 600)))
+        active_agathe = st.toggle("Activer Trésor Agathe (1000€)", value=conf_cloud.get("active_agathe", 0) == 1)
+        mode_urgence = st.toggle("🚨 MODE VIGILANCE", value=conf_cloud.get("mode_urgence", 0) == 1)
 
-    if st.button("💾 SAUVEGARDER LES RÉGLAGES"):
-        new_conf = {
-            "sal": c_sal, "caaf": c_caaf, "loyer_in": c_loyer_in, "h_sup": c_h_sup,
-            "l_out": c_lout, "a_emp": c_aemp, "e_eau": c_eau, "a_vie": c_avie,
-            "remboursement": c_remb, "budget_bouffe": c_bouffe
+    if st.button("💾 SAUVEGARDER TOUTE LA CONFIGURATION"):
+        config_a_sauver = {
+            "sal": sal, "caaf": caaf, "loyer_in": loyer_in, "h_sup": h_sup, "rev_extra": rev_extra,
+            "l_out": l_out, "a_emp": a_emp, "t_net": t_net, "e_eau": e_eau, "mgen": mgen,
+            "kona": kona, "fam": fam, "a_vie": a_vie, "remboursement": remboursement,
+            "obj_decouvert": obj_decouvert, "budget_bouffe": budget_bouffe,
+            "active_agathe": 1 if active_agathe else 0, "mode_urgence": 1 if mode_urgence else 0,
+            "last_report": st.session_state.solde_ajustement
         }
-        save_config(new_conf)
-        st.success("Réglages mémorisés dans le Cloud !")
+        save_config(config_a_sauver)
+        st.success("Toutes les variables sont enregistrées dans Config !")
 
-# --- CALCULS ---
-rev_total = c_sal + c_caaf + c_loyer_in + c_h_sup
-# Note : Charges simplifiées ici pour l'exemple, garde toutes tes variables dans ton code complet
-charges_total = c_lout + c_aemp + c_eau + c_avie + 160 + 415 + 200 + 90 
-epargne_agathe = 1000 if active_agathe else 0
-jours_mois = calendar.monthrange(datetime.now().year, datetime.now().month)[1]
+# --- CALCULS PRÉCIS ---
+now = datetime.now()
+jours_mois = calendar.monthrange(now.year, now.month)[1]
 
-budget_mois = rev_total - charges_total - c_remb - epargne_agathe - c_bouffe
-obj_journalier = budget_mois / jours_mois
+# 1. Total Revenus
+rev_total = sal + caaf + loyer_in + h_sup + rev_extra
 
-# --- DASHBOARD ---
-st.title(f"💎 Pilotage : {datetime.now().strftime('%B %Y')}")
-df_h = load_histo()
-reste_jour = obj_journalier + st.session_state.solde_ajustement - df_h[df_h["Date"] == datetime.now().strftime("%Y-%m-%d")]["Montant"].sum()
+# 2. Total Charges (VÉRIFIÉ : Pas de variable 'Divers' oubliée)
+charges_total = l_out + a_emp + t_net + e_eau + mgen + kona + fam + a_vie
+
+# 3. Stratégie
+epargne_auto = 1000 if active_agathe else 0
+coeff_urg = 0.7 if mode_urgence else 1.0
+
+# 4. Disponible final
+budget_dispo_mensuel = rev_total - charges_total - remboursement - epargne_auto - (budget_bouffe * coeff_urg)
+obj_journalier = budget_dispo_mensuel / jours_mois
+
+# --- DASHBOARD & GRAPHIQUES ---
+st.title(f"💎 Dashboard Agathe : {now.strftime('%B %Y')}")
+df_h = conn.read(worksheet="Historique", ttl=0)
+if df_h is None or df_h.empty:
+    df_h = pd.DataFrame(columns=["Date", "Nom", "Montant", "Type", "Mode"])
+
+total_depense_mois = pd.to_numeric(df_h["Montant"]).sum()
+reste_reel_jour = obj_journalier + st.session_state.solde_ajustement - df_h[df_h["Date"] == now.strftime("%Y-%m-%d")]["Montant"].sum()
 
 c1, c2, c3 = st.columns(3)
 c1.metric("OBJECTIF / JOUR", f"{obj_journalier:.2f} €")
-c2.metric("DISPONIBLE RÉEL", f"{reste_jour:.2f} €")
-c3.metric("PRÉVISION FIN MOIS", f"{(budget_mois + st.session_state.solde_ajustement) - df_h['Montant'].sum():.2f} €")
+c2.metric("LIBERTÉ RÉELLE JOUR", f"{reste_reel_jour:.2f} €")
+c3.metric("RESTANT FIN MOIS", f"{(budget_dispo_mensuel + st.session_state.solde_ajustement) - total_depense_mois:.2f} €")
 
-# --- GRAPHIQUE ---
-if not df_h.empty:
-    fig = px.area(df_h.groupby("Date")["Montant"].sum().reset_index(), x="Date", y="Montant", color_discrete_sequence=["#00f2fe"])
-    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
-    st.plotly_chart(fig, use_container_width=True)
+st.divider()
 
-# --- ACTIONS ---
-t1, t2, t3 = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ ARCHIVES"])
-# ... (garde tes formulaires de saisie et d'archivage ici)
+# --- ONGLETS ---
+t1, t2, t3 = st.tabs(["✍️ SAISIE", "📑 HISTORIQUE", "⚙️ GESTION"])
+
+with t1:
+    with st.form("ajout"):
+        ca, cb, cc = st.columns([2,1,1])
+        n = ca.text_input("Désignation")
+        m = cb.number_input("Montant (€)", min_value=0.0)
+        cat = cc.selectbox("Catégorie", ["Courses", "Vie Courante", "Loisirs", "Santé", "Imprévu"])
+        if st.form_submit_button("🔨 VALIDER L'ACHAT"):
+            new_row = pd.DataFrame([{"Date": now.strftime("%Y-%m-%d"), "Nom": n, "Montant": m, "Type": cat, "Mode": "Normal"}])
+            conn.update(worksheet="Historique", data=pd.concat([df_h, new_row], ignore_index=True))
+            st.rerun()
+
+with t2:
+    st.dataframe(df_h.sort_values(by="Date", ascending=False), use_container_width=True)
+    if st.button("🌙 Clôturer Journée (Report automatique)"):
+        st.session_state.solde_ajustement = reste_reel_jour
+        st.rerun()
+
+with t3:
+    st.subheader("📦 Archives")
+    if st.button("SAUVEGARDER LE MOIS DANS ARCHIVES"):
+        try:
+            df_arch = conn.read(worksheet="Archives", ttl=0)
+            conn.update(worksheet="Archives", data=pd.concat([df_arch, df_h], ignore_index=True))
+            st.success("Archivage OK")
+        except: st.error("Onglet 'Archives' manquant !")
